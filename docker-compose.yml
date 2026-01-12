@@ -1,0 +1,75 @@
+services:
+  db-init:
+    build:
+      context: .
+      args:
+        API_URL: ${API_URL:-http://api:3001}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-file:/data/dev.db}
+    volumes:
+      - sqlite_data:/data
+    command: ["npm", "-w", "packages/database", "run", "db:push"]
+
+  api:
+    build:
+      context: .
+      args:
+        API_URL: ${API_URL:-http://api:3001}
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      PORT: ${API_PORT:-3001}
+      DATABASE_URL: ${DATABASE_URL:-file:/data/dev.db}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+    volumes:
+      - sqlite_data:/data
+    ports:
+      - "${API_PORT:-3001}:3001"
+    command: ["npm", "-w", "packages/api", "run", "start"]
+
+  worker:
+    build:
+      context: .
+      args:
+        API_URL: ${API_URL:-http://api:3001}
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-file:/data/dev.db}
+      WORKER_ENABLED: ${WORKER_ENABLED:-true}
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-10000}
+      WORKER_MAX_BOTS: ${WORKER_MAX_BOTS:-100}
+      WORKER_CACHE_MAX: ${WORKER_CACHE_MAX:-100}
+      WORKER_ENABLE_TRADING: ${WORKER_ENABLE_TRADING:-true}
+      WORKER_ENABLE_STOPPING: ${WORKER_ENABLE_STOPPING:-true}
+      WORKER_USE_REAL_EXCHANGE: ${WORKER_USE_REAL_EXCHANGE:-false}
+      EXCHANGE_PROVIDER: ${EXCHANGE_PROVIDER:-mock}
+      ALLOW_MAINNET_TRADING: ${ALLOW_MAINNET_TRADING:-false}
+      WORKER_ORDER_MAX_RETRIES: ${WORKER_ORDER_MAX_RETRIES:-5}
+      WORKER_ORDER_BACKOFF_BASE_MS: ${WORKER_ORDER_BACKOFF_BASE_MS:-1000}
+      WORKER_ORDER_BACKOFF_MAX_MS: ${WORKER_ORDER_BACKOFF_MAX_MS:-30000}
+      WORKER_STOP_MAX_RETRIES: ${WORKER_STOP_MAX_RETRIES:-5}
+      WORKER_STOP_BACKOFF_BASE_MS: ${WORKER_STOP_BACKOFF_BASE_MS:-1000}
+      WORKER_STOP_BACKOFF_MAX_MS: ${WORKER_STOP_BACKOFF_MAX_MS:-30000}
+    volumes:
+      - sqlite_data:/data
+    command: ["npm", "-w", "packages/worker", "run", "start"]
+
+  web:
+    build:
+      context: .
+      args:
+        API_URL: ${API_URL:-http://api:3001}
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      PORT: ${WEB_PORT:-3000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    command: ["npm", "-w", "packages/web", "run", "start"]
+
+volumes:
+  sqlite_data:

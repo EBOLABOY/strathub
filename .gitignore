@@ -18,6 +18,8 @@ test_output*.txt
 # Env / secrets
 .env
 .env.*
+!.env.example
+!packages/database/.env
 
 # Local databases / state
 *.db
