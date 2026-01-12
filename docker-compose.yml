@@ -25,7 +25,7 @@ services:
     volumes:
       - sqlite_data:/data
     ports:
-      - "${API_PORT:-3001}:3001"
+      - "${API_PORT:-3001}:${API_PORT:-3001}"
     command: ["npm", "-w", "packages/api", "run", "start"]
 
   worker:
@@ -68,7 +68,7 @@ services:
     environment:
       PORT: ${WEB_PORT:-3000}
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
     command: ["npm", "-w", "packages/web", "run", "start"]
 
 volumes:
