@@ -1,0 +1,25 @@
+{
+    "name": "@crypto-strategy-hub/worker",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "dev": "tsx src/index.ts",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@crypto-strategy-hub/database": "*",
+        "@crypto-strategy-hub/exchange": "^0.1.0",
+        "@crypto-strategy-hub/exchange-simulator": "*",
+        "@crypto-strategy-hub/market-data": "*",
+        "@crypto-strategy-hub/security": "*",
+        "@crypto-strategy-hub/shared": "*"
+    },
+    "devDependencies": {
+        "tsx": "^4.0.0",
+        "typescript": "^5.0.0",
+        "vitest": "^1.0.0"
+    }
+}

@@ -1,0 +1,208 @@
+/**
+ * STOPPING 执行器验收测试
+ * 
+ * 3 条锁口径：
+ * 1. STOPPING + 有 open orders → cancel → STOPPED
+ * 2. STOPPING + 503 → 状态不变
+ * 3. STOPPING + 无 orders → 直接 STOPPED
+ */
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { prisma } from '@crypto-strategy-hub/database';
+import { createProcessStoppingBot, createMockExecutor, type ExchangeExecutor, type OpenOrder } from '../src/stopping-executor.js';
+
+// ============================================================================
+// Test Fixtures
+// ============================================================================
+
+let testUserId: string;
+let testExchangeAccountId: string;
+
+const dummyConfig = JSON.stringify({
+    trigger: { gridType: 'percent', basePriceType: 'manual', basePrice: '600', riseSell: '1', fallBuy: '1' },
+    order: { orderType: 'limit' },
+    sizing: { amountMode: 'amount', gridSymmetric: true, symmetric: { orderQuantity: '100' } },
+});
+
+// ============================================================================
+// Setup/Cleanup
+// ============================================================================
+
+beforeAll(async () => {
+    const user = await prisma.user.create({
+        data: {
+            email: `test-stopping-${Date.now()}@test.com`,
+            passwordHash: 'test-hash',
+        },
+    });
+    testUserId = user.id;
+
+    const account = await prisma.exchangeAccount.create({
+        data: {
+            userId: testUserId,
+            exchange: 'binance',
+            name: 'test-stopping-account',
+            encryptedCredentials: '{}',
+        },
+    });
+    testExchangeAccountId = account.id;
+});
+
+afterAll(async () => {
+    await prisma.bot.deleteMany({ where: { userId: testUserId } });
+    await prisma.exchangeAccount.deleteMany({ where: { userId: testUserId } });
+    await prisma.user.delete({ where: { id: testUserId } });
+});
+
+beforeEach(async () => {
+    await prisma.bot.deleteMany({ where: { userId: testUserId } });
+});
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('STOPPING 执行器验收测试', () => {
+    it('should cancel open orders and transition to STOPPED', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BNB/USDT',
+                configJson: dummyConfig,
+                status: 'STOPPING',
+                statusVersion: 5,
+                runId: 'run-123',
+            },
+        });
+
+        const mockOrders: OpenOrder[] = [
+            { id: 'order-1', symbol: 'BNB/USDT' },
+            { id: 'order-2', symbol: 'BNB/USDT' },
+        ];
+        const executor = createMockExecutor(mockOrders);
+        const processStoppingBot = createProcessStoppingBot(executor);
+
+        const result = await processStoppingBot(bot.id);
+
+        expect(result.success).toBe(true);
+        expect(result.newStatus).toBe('STOPPED');
+        expect(result.canceledOrders).toBe(2);
+
+        // 验证数据库状态
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('STOPPED');
+        expect(afterBot!.statusVersion).toBe(6);
+        expect(afterBot!.runId).toBeNull();
+    });
+
+    it('should not change status when exchange unavailable', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BNB/USDT',
+                configJson: dummyConfig,
+                status: 'STOPPING',
+                statusVersion: 5,
+                runId: 'run-456',
+            },
+        });
+
+        // 创建失败的 executor
+        const failingExecutor: ExchangeExecutor = {
+            async fetchOpenOrders() {
+                throw new Error('Exchange unavailable');
+            },
+            async cancelOrder() {
+                throw new Error('Exchange unavailable');
+            },
+        };
+        const processStoppingBot = createProcessStoppingBot(failingExecutor);
+
+        const result = await processStoppingBot(bot.id);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('503');
+
+        // 验证状态没变
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('STOPPING');
+        expect(afterBot!.statusVersion).toBe(5);
+        expect(afterBot!.runId).toBe('run-456');
+    });
+
+    it('should transition to STOPPED when no open orders', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BNB/USDT',
+                configJson: dummyConfig,
+                status: 'STOPPING',
+                statusVersion: 5,
+                runId: 'run-789',
+            },
+        });
+
+        // 空 orders
+        const executor = createMockExecutor([]);
+        const processStoppingBot = createProcessStoppingBot(executor);
+
+        const result = await processStoppingBot(bot.id);
+
+        expect(result.success).toBe(true);
+        expect(result.newStatus).toBe('STOPPED');
+        expect(result.canceledOrders).toBe(0);
+
+        // 验证数据库状态
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('STOPPED');
+        expect(afterBot!.statusVersion).toBe(6);
+        expect(afterBot!.runId).toBeNull();
+    });
+
+    it('should stay STOPPING when cancelOrder fails (partial cancel)', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BNB/USDT',
+                configJson: dummyConfig,
+                status: 'STOPPING',
+                statusVersion: 5,
+                runId: 'run-partial',
+            },
+        });
+
+        // fetchOpenOrders 成功，但第二个 cancel 失败
+        let cancelCount = 0;
+        const partialFailExecutor: ExchangeExecutor = {
+            async fetchOpenOrders() {
+                return [
+                    { id: 'order-1', symbol: 'BNB/USDT' },
+                    { id: 'order-2', symbol: 'BNB/USDT' },
+                ];
+            },
+            async cancelOrder(orderId: string) {
+                cancelCount++;
+                if (orderId === 'order-2') {
+                    throw new Error('Network timeout');
+                }
+            },
+        };
+        const processStoppingBot = createProcessStoppingBot(partialFailExecutor);
+
+        const result = await processStoppingBot(bot.id);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('order-2');
+        expect(result.canceledOrders).toBe(1); // 第一个成功了
+
+        // 验证状态没变
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('STOPPING');
+        expect(afterBot!.statusVersion).toBe(5);
+        expect(afterBot!.runId).toBe('run-partial');
+    });
+});

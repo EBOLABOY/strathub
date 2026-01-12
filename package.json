@@ -1,0 +1,16 @@
+{
+    "name": "crypto-strategy-hub",
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "npm run build --workspaces",
+        "test": "npm run test --workspaces --if-present",
+        "lint": "npm run lint --workspaces --if-present"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.0",
+        "typescript": "^5.7.0"
+    }
+}

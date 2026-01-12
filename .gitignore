@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Builds / outputs
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+test_output*.txt
+
+# Env / secrets
+.env
+.env.*
+
+# Local databases / state
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# E2E / local artifacts
+.e2e_logs/

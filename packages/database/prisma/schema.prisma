@@ -1,0 +1,248 @@
+// Prisma Schema for Crypto Strategy Hub
+// 来源：implementation_plan.md §2.2.3
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// User & Auth
+// ============================================================================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("user") // "admin" | "user"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Kill Switch (ACC-RISK-001)
+  killSwitchEnabled   Boolean   @default(false)
+  killSwitchEnabledAt DateTime?
+  killSwitchReason    String?
+
+  exchangeAccounts ExchangeAccount[]
+  bots             Bot[]
+}
+
+model ExchangeAccount {
+  id                   String   @id @default(uuid())
+  userId               String
+  exchange             String   // "binance" | "okx"
+  name                 String   // 用户自定义名称
+  isTestnet            Boolean  @default(false)
+  encryptedCredentials String   // AES-256 加密的 JSON { apiKey, secret, passphrase? }
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bots Bot[]
+
+  @@unique([userId, exchange, name])
+}
+
+// ============================================================================
+// Bot (策略实例)
+// ============================================================================
+
+model Bot {
+  id                String   @id @default(uuid())
+  userId            String
+  exchangeAccountId String
+  strategyType      String   @default("grid") // "grid" | future extensions
+  symbol            String   // "BNB/USDT"
+
+  // 状态机
+  status            String   @default("DRAFT") // BotStatus enum
+  statusVersion     Int      @default(0)       // 乐观锁
+  runId             String?  // 当前运行 ID
+  lastError         String?
+
+  // 配置（版本化）
+  configRevision    Int      @default(1)
+  configJson        String   // GridStrategyConfigV1 JSON
+
+  // AutoClose 运行时字段 (ACC-RISK-002)
+  autoCloseReferencePrice String?   // start/resume 时冻结的参考价
+  autoCloseTriggeredAt    DateTime? // 触发时间（只触发一次）
+  autoCloseReason         String?   // 触发原因
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exchangeAccount   ExchangeAccount  @relation(fields: [exchangeAccountId], references: [id], onDelete: Cascade)
+  orders            Order[]
+  trades            Trade[]
+  snapshots         BotSnapshot[]
+  logs              BotLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@unique([exchangeAccountId, symbol]) // 同账户同币对只允许一个 bot
+}
+
+// ============================================================================
+// Order (订单记录，幂等核心)
+// ============================================================================
+
+model Order {
+  id              String   @id @default(uuid())
+  botId           String
+  exchange        String
+  symbol          String
+  
+  // 幂等关键字段
+  clientOrderId   String   // 必填，gb1 前缀
+  exchangeOrderId String?  // 创建成功后回填
+  submittedAt     DateTime? // 提交到交易所的时间（null=意图已落库，待提交）
+  
+  // 订单属性
+  side            String   // "buy" | "sell"
+  type            String   // "limit" | "market"
+  status          String   // OrderStatus enum
+  
+  // 价格与数量（decimal string）
+  price           String?
+  amount          String
+  filledAmount    String   @default("0")
+  avgFillPrice    String?
+  
+  // Intent 追踪
+  intentSeq       Int?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  trades          Trade[]
+
+  // 幂等约束：同一交易所 + clientOrderId 必须唯一
+  @@unique([exchange, clientOrderId])
+  // 同一交易所 + exchangeOrderId 必须唯一（允许 null）
+  @@unique([exchange, exchangeOrderId])
+  @@index([botId])
+  @@index([status])
+}
+
+// ============================================================================
+// Trade (成交记录)
+// ============================================================================
+
+model Trade {
+  id            String   @id @default(uuid())
+  botId         String
+  orderId       String?
+  exchange      String
+  symbol        String
+  
+  // 唯一键
+  tradeId       String   // 交易所返回的 trade ID
+  clientOrderId String?  // 用于匹配订单
+  
+  // 成交信息（decimal string）
+  side          String
+  price         String
+  amount        String
+  fee           String
+  feeCurrency   String
+  
+  timestamp     DateTime
+
+  bot           Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // 幂等约束：同一交易所 + tradeId 必须唯一
+  @@unique([exchange, tradeId])
+  @@index([botId])
+  @@index([clientOrderId])
+}
+
+// ============================================================================
+// BotSnapshot (运行快照)
+// ============================================================================
+
+model BotSnapshot {
+  id              String   @id @default(uuid())
+  botId           String
+  runId           String
+  
+  reconciledAt    DateTime
+  stateJson       String   // BotRuntimeStateV1 JSON
+  stateHash       String   // 用于检测状态变化
+  lastTradeCursor String?  // 最后处理的 trade 游标
+  
+  createdAt       DateTime @default(now())
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, runId])
+}
+
+// ============================================================================
+// BotLog (运行日志)
+// ============================================================================
+
+model BotLog {
+  id         String   @id @default(uuid())
+  botId      String
+  runId      String?
+  
+  level      String   // "debug" | "info" | "warn" | "error"
+  message    String
+  fieldsJson String?  // 结构化字段 JSON
+  
+  timestamp  DateTime @default(now())
+
+  bot        Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, runId])
+  @@index([timestamp])
+  @@index([level])
+}
+
+// ============================================================================
+// Config Center (配置中心)
+// ============================================================================
+
+model ConfigItem {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String   @default("general")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  history     ConfigHistory[]
+}
+
+model ConfigHistory {
+  id           String   @id @default(uuid())
+  configItemId String
+  oldValue     String
+  newValue     String
+  changedBy    String?
+  changedAt    DateTime @default(now())
+
+  configItem   ConfigItem @relation(fields: [configItemId], references: [id], onDelete: Cascade)
+
+  @@index([configItemId])
+}
+
+model ConfigTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  configJson  String   // 模板配置 JSON
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

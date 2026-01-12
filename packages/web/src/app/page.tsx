@@ -1,0 +1,118 @@
+
+import { Sidebar } from "@/components/Sidebar";
+import { KPICards } from "@/components/KPICards"; // Assuming standard exports
+import { MainChart } from "@/components/MainChart";
+import { TopologyMap } from "@/components/TopologyMap";
+import { Bell, Search } from "lucide-react";
+
+export default function Dashboard() {
+  return (
+    <div className="flex h-screen bg-page overflow-hidden">
+      {/* Sidebar */}
+      <Sidebar />
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden min-w-0">
+
+        {/* Header */}
+        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-8 sticky top-0 z-30">
+          <h1 className="text-xl font-bold text-slate-800">Overview</h1>
+
+          <div className="flex items-center gap-6">
+            {/* Real/Sim Switch */}
+            <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mode</span>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
+                <span className="ml-2 text-sm font-medium text-slate-700 peer-checked:text-teal-600">Real</span>
+              </label>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-4 text-slate-400">
+              <button className="hover:text-slate-600 transition-colors"><Search className="w-5 h-5" /></button>
+              <button className="hover:text-slate-600 transition-colors relative">
+                <Bell className="w-5 h-5" />
+                <span className="absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+              </button>
+              <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-slate-300">
+                {/* Avatar placeholder */}
+                <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-400"></div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Scrollable Content */}
+        <div className="p-8 space-y-8 pb-12">
+
+          {/* 1. KPI Cards */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-slate-700">Key Metrics</h2>
+              <span className="text-xs text-slate-400">Last updated: Just now</span>
+            </div>
+            <KPICards />
+          </section>
+
+          {/* 2. Bento Grid: Topology & Chart */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Topology (1 col) */}
+            <div className="lg:col-span-1">
+              <TopologyMap />
+            </div>
+
+            {/* Main Chart (2 cols) */}
+            <div className="lg:col-span-2">
+              <MainChart />
+            </div>
+          </section>
+
+          {/* 3. Recent Activity / Status List (Placeholder for now) */}
+          <section className="bg-white rounded-2xl shadow-diffuse border border-slate-50 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-slate-700">Active Bots</h3>
+              <button className="text-sm text-teal-600 font-medium hover:text-teal-700">View All</button>
+            </div>
+
+            {/* Simple Table Header */}
+            <div className="grid grid-cols-5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-2">
+              <div className="col-span-2">Bot Name</div>
+              <div>Status</div>
+              <div>PnL (24h)</div>
+              <div className="text-right">Action</div>
+            </div>
+
+            {/* List Items */}
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="grid grid-cols-5 items-center py-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 px-2 rounded-lg transition-colors">
+                <div className="col-span-2 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center text-teal-600 font-bold text-xs border border-teal-100">
+                    B{i}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-700 text-sm">Grid-BNB-USDT-{i}</div>
+                    <div className="text-xs text-slate-400">Binance • Limit</div>
+                  </div>
+                </div>
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    Running
+                  </span>
+                </div>
+                <div className="text-sm font-semibold text-slate-700">+$124.50</div>
+                <div className="text-right">
+                  <button className="text-xs font-medium text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all">
+                    Manage
+                  </button>
+                </div>
+              </div>
+            ))}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}

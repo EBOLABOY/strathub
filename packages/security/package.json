@@ -1,0 +1,24 @@
+{
+    "name": "@crypto-strategy-hub/security",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsc",
+        "lint": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.0"
+    },
+    "dependencies": {
+        "@types/node": "^25.0.3"
+    }
+}
