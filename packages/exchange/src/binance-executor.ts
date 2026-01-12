@@ -14,7 +14,7 @@ import type {
     CreateOrderParams,
     CreateOrderResult
 } from '@crypto-strategy-hub/shared';
-import { ORDER_PREFIX } from '@crypto-strategy-hub/shared';
+import { ORDER_PREFIX, ExchangeUnavailableError, RateLimitError, TimeoutError } from '@crypto-strategy-hub/shared';
 
 export interface BinanceExecutorConfig {
     apiKey: string;
@@ -46,27 +46,40 @@ export class BinanceExecutor implements TradingExecutor {
     }
 
     async fetchOpenOrders(symbol: string): Promise<OpenOrder[]> {
-        // 过滤我们的订单 (gb1)
-        const orders = await this.exchange.fetchOpenOrders(symbol);
-        return orders
-            .filter(o => (o.clientOrderId?.startsWith(ORDER_PREFIX)) ?? false)
-            .map(o => ({
-                id: o.id,
-                symbol: o.symbol,
-                clientOrderId: o.clientOrderId!,
-            }));
+        try {
+            // 过滤我们的订单 (gb1)
+            const orders = await this.exchange.fetchOpenOrders(symbol);
+            return orders
+                .filter(o => (o.clientOrderId?.startsWith(ORDER_PREFIX)) ?? false)
+                .map(o => ({
+                    id: o.id,
+                    symbol: o.symbol,
+                    clientOrderId: o.clientOrderId!,
+                }));
+        } catch (error) {
+            throw mapCcxtError('fetchOpenOrders', error);
+        }
     }
 
     async fetchOpenOrdersFull(symbol: string): Promise<FullOrderRecord[]> {
-        const orders = await this.exchange.fetchOpenOrders(symbol);
-        return orders
-            .filter(o => (o.clientOrderId?.startsWith(ORDER_PREFIX)) ?? false)
-            .map(this.mapToFullOrder);
+        try {
+            const orders = await this.exchange.fetchOpenOrders(symbol);
+            return orders
+                .filter(o => (o.clientOrderId?.startsWith(ORDER_PREFIX)) ?? false)
+                .map(this.mapToFullOrder);
+        } catch (error) {
+            throw mapCcxtError('fetchOpenOrdersFull', error);
+        }
     }
 
     async fetchMyTrades(symbol: string, since?: string): Promise<TradeRecord[]> {
-        const sinceTs = since ? new Date(since).getTime() : undefined;
-        let trades = await this.exchange.fetchMyTrades(symbol, sinceTs);
+        let trades: any[];
+        try {
+            const sinceTs = since ? new Date(since).getTime() : undefined;
+            trades = await this.exchange.fetchMyTrades(symbol, sinceTs);
+        } catch (error) {
+            throw mapCcxtError('fetchMyTrades', error);
+        }
 
         // 如果 trade 缺少 clientOrderId，尝试补充 (API 限制：部分 trade 可能没有 clientOrderId)
         // 策略：我们不应该在这里疯狂拉单补充，而是依赖 orderId 关联。
@@ -109,7 +122,7 @@ export class BinanceExecutor implements TradingExecutor {
             if (e.message?.includes('Unknown order') || e.message?.includes('Order was not found')) {
                 return;
             }
-            throw e;
+            throw mapCcxtError('cancelOrder', e);
         }
     }
 
@@ -170,7 +183,7 @@ export class BinanceExecutor implements TradingExecutor {
                     throw e;
                 }
             }
-            throw e;
+            throw mapCcxtError('createOrder', e);
         }
     }
 
@@ -203,4 +216,17 @@ export class BinanceExecutor implements TradingExecutor {
 
 export function createBinanceExecutor(config: BinanceExecutorConfig): TradingExecutor {
     return new BinanceExecutor(config);
+}
+
+function mapCcxtError(operation: string, error: unknown): unknown {
+    if (error instanceof ccxt.RateLimitExceeded || error instanceof ccxt.DDoSProtection) {
+        return new RateLimitError(undefined, error);
+    }
+    if (error instanceof ccxt.RequestTimeout) {
+        return new TimeoutError(`Request timeout: ${operation}`, error);
+    }
+    if (error instanceof ccxt.NetworkError || error instanceof ccxt.ExchangeNotAvailable) {
+        return new ExchangeUnavailableError(`Exchange unavailable: ${operation}`, error);
+    }
+    return error;
 }

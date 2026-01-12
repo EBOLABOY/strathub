@@ -12,6 +12,7 @@
 import ccxt, { Market, Ticker } from 'ccxt';
 import type { MarketDataProvider, ExchangeAccountInfo } from './types.js';
 import type { PreviewMarketInfo, PreviewTickerInfo, PreviewBalanceInfo } from '@crypto-strategy-hub/shared';
+import { ExchangeUnavailableError, RateLimitError, TimeoutError } from '@crypto-strategy-hub/shared';
 
 /**
  * 创建 Binance ccxt Provider
@@ -45,7 +46,7 @@ export async function createBinanceProvider(account: ExchangeAccountInfo): Promi
       marketsLoaded = true;
     } catch (error) {
       logCcxtError('loadMarkets', error);
-      throw new Error('Failed to load markets from exchange');
+      throw mapCcxtError('loadMarkets', error);
     }
   }
 
@@ -68,7 +69,7 @@ export async function createBinanceProvider(account: ExchangeAccountInfo): Promi
         return mapTickerToPreviewInfo(ticker);
       } catch (error) {
         logCcxtError('fetchTicker', error);
-        throw new Error(`Failed to fetch ticker for ${symbol}`);
+        throw mapCcxtError('fetchTicker', error, symbol);
       }
     },
 
@@ -124,4 +125,17 @@ function logCcxtError(operation: string, error: unknown): void {
     return;
   }
   console.error(`[BinanceProvider] ERROR in ${operation}:`, error);
+}
+
+function mapCcxtError(operation: string, error: unknown, symbol?: string): unknown {
+  if (error instanceof ccxt.RateLimitExceeded || error instanceof ccxt.DDoSProtection) {
+    return new RateLimitError(undefined, error);
+  }
+  if (error instanceof ccxt.RequestTimeout) {
+    return new TimeoutError(`Request timeout: ${operation}${symbol ? ` (${symbol})` : ''}`, error);
+  }
+  if (error instanceof ccxt.NetworkError || error instanceof ccxt.ExchangeNotAvailable) {
+    return new ExchangeUnavailableError(`Exchange unavailable: ${operation}${symbol ? ` (${symbol})` : ''}`, error);
+  }
+  return error instanceof Error ? error : new ExchangeUnavailableError(`Exchange error: ${operation}`, error);
 }

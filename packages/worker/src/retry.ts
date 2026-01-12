@@ -52,9 +52,26 @@ function readStringProp(value: unknown, key: string): string | undefined {
     return typeof raw === 'string' ? raw : undefined;
 }
 
+function readNumberLikeProp(value: unknown, key: string): number | undefined {
+    const num = readNumberProp(value, key);
+    if (num !== undefined) return num;
+
+    const raw = readStringProp(value, key);
+    if (!raw) return undefined;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return undefined;
+    return parsed;
+}
+
 export function classifyRetryableError(error: unknown): RetryableErrorInfo {
     const message = error instanceof Error ? error.message : String(error);
     const code = readStringProp(error, 'code');
+    const name = error instanceof Error ? error.name : undefined;
+    const httpStatus =
+        readNumberLikeProp(error, 'status') ??
+        readNumberLikeProp(error, 'statusCode') ??
+        readNumberLikeProp(error, 'httpStatus') ??
+        readNumberLikeProp(error, 'httpStatusCode');
 
     // ExchangeSimulator 的错误模型：{ retryable: boolean; retryAfterMs?: number; code: string }
     const retryableFlag = (() => {
@@ -66,15 +83,24 @@ export function classifyRetryableError(error: unknown): RetryableErrorInfo {
 
     const isRateLimit =
         code === 'RATE_LIMIT' ||
-        (error instanceof Error && error.name === 'RateLimitError') ||
+        name === 'RateLimitError' ||
+        name === 'RateLimitExceeded' ||
+        name === 'DDoSProtection' ||
+        httpStatus === 429 ||
         /rate\s*limit|too\s*many\s*requests|429/i.test(message);
 
     const isTimeout =
         code === 'TIMEOUT' ||
+        name === 'TimeoutError' ||
+        name === 'RequestTimeout' ||
         (error instanceof Error && /timeout|timed\s*out|ETIMEDOUT/i.test(message));
 
     const isTransient =
         code === 'EXCHANGE_UNAVAILABLE' ||
+        name === 'ExchangeUnavailableError' ||
+        name === 'ExchangeNotAvailable' ||
+        name === 'NetworkError' ||
+        httpStatus === 503 ||
         /EXCHANGE_UNAVAILABLE|service\s+unavailable|temporarily\s+unavailable|unavailable|503|network/i.test(message) ||
         /ECONNRESET|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN/i.test(message);
 

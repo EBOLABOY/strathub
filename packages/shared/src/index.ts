@@ -8,3 +8,4 @@ export * from './gates/index.js';
 export * from './auto-close.js';
 export * from './trading-executor.js';
 export * from './idempotency.js';
+export * from './exchange-errors.js';
