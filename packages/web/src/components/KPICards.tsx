@@ -76,7 +76,13 @@ export function KPICards() {
                         </div>
 
                         <div className="w-24 h-full relative -mr-2">
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer
+                                width="100%"
+                                height="100%"
+                                initialDimension={{ width: 1, height: 1 }}
+                                minWidth={1}
+                                minHeight={1}
+                            >
                                 <AreaChart data={kpi.data.map(val => ({ val }))}>
                                     <defs>
                                         <linearGradient id={`gradient-${kpi.label}`} x1="0" y1="0" x2="0" y2="1">

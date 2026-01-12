@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Bot, ArrowLeft, Loader2, Save, AlertCircle, Plus, RefreshCw } from "lucide-react";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 // Valid V1 GridStrategyConfig
 const DEFAULT_CONFIG = `{
@@ -33,6 +34,8 @@ const DEFAULT_CONFIG = `{
 }`;
 
 export default function NewBotPage() {
+    useRequireAuth();
+
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);

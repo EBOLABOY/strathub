@@ -12,8 +12,11 @@ import clsx from 'clsx';
 import { BotStatus } from "@crypto-strategy-hub/shared";
 import { api } from "@/lib/api";
 import { useState } from "react";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 export default function BotDetailPage() {
+    useRequireAuth();
+
     const params = useParams();
     const router = useRouter();
     const id = params?.id as string;

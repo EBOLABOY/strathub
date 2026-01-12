@@ -8,6 +8,7 @@ import {
     CheckCircle, Shield, AlertTriangle
 } from "lucide-react";
 import clsx from "clsx";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface Account {
     id: string;
@@ -18,6 +19,8 @@ interface Account {
 }
 
 export default function SettingsAccountsPage() {
+    useRequireAuth();
+
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

@@ -7,8 +7,11 @@ import clsx from 'clsx';
 import { useBots } from "@/lib/hooks";
 import { useRouter } from "next/navigation";
 import { BotStatus } from "@crypto-strategy-hub/shared";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 export default function BotsPage() {
+    useRequireAuth();
+
     const router = useRouter();
     const { bots, isLoading, error } = useBots();
 

@@ -34,6 +34,14 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export const api = {
     auth: {
+        async register(email: string, password: string) {
+            const res = await fetch(`${API_BASE}/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+            });
+            return handleResponse<any>(res);
+        },
         async login(email: string, password: string) {
             const res = await fetch(`${API_BASE}/auth/login`, {
                 method: 'POST',

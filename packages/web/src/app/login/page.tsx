@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -8,10 +7,18 @@ import { Bot, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const finishLogin = (token: string) => {
+        localStorage.setItem("token", token);
+
+        const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+        router.push(returnTo?.startsWith("/") ? returnTo : "/");
+    };
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -20,8 +27,39 @@ export default function LoginPage() {
 
         try {
             const { token } = await api.auth.login(email, password);
-            localStorage.setItem("token", token);
-            router.push("/"); // Go to Dashboard
+            finishLogin(token);
+        } catch (err: any) {
+            if (err instanceof ApiError) {
+                setError(err.message);
+            } else {
+                setError("Failed to connect to server");
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCreateAccount = async () => {
+        setIsLoading(true);
+        setError(null);
+
+        if (!email || !password) {
+            setError("Email and password are required");
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            try {
+                await api.auth.register(email, password);
+            } catch (err: any) {
+                if (!(err instanceof ApiError) || err.code !== "EMAIL_EXISTS") {
+                    throw err;
+                }
+            }
+
+            const { token } = await api.auth.login(email, password);
+            finishLogin(token);
         } catch (err: any) {
             if (err instanceof ApiError) {
                 setError(err.message);
@@ -53,25 +91,31 @@ export default function LoginPage() {
                     )}
 
                     <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">Email</label>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
+                            Email
+                        </label>
                         <input
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all text-sm font-medium text-slate-700 bg-slate-50 focus:bg-white"
                             placeholder="name@company.com"
+                            autoComplete="email"
                             required
                         />
                     </div>
 
                     <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">Password</label>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
+                            Password
+                        </label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all text-sm font-medium text-slate-700 bg-slate-50 focus:bg-white"
-                            placeholder="••••••••"
+                            placeholder="At least 8 characters"
+                            autoComplete="current-password"
                             required
                         />
                     </div>
@@ -84,8 +128,19 @@ export default function LoginPage() {
                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign In"}
                     </button>
 
+                    <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={handleCreateAccount}
+                        className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition-all border border-slate-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
+                    </button>
+
                     <div className="text-center mt-4">
-                        <a href="#" className="text-xs font-medium text-teal-600 hover:text-teal-700">Detailed instructions for Testnet access</a>
+                        <a href="#" className="text-xs font-medium text-teal-600 hover:text-teal-700">
+                            Detailed instructions for Testnet access
+                        </a>
                     </div>
                 </form>
             </div>

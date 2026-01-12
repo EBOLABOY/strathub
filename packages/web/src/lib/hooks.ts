@@ -9,6 +9,15 @@ export function useBots(interval = 5000) {
     const [error, setError] = useState<string | null>(null);
 
     const fetchBots = useCallback(async () => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token) {
+            setIsLoading(false);
+            if (bots.length === 0) {
+                setError('Please sign in');
+            }
+            return;
+        }
+
         try {
             const data = await api.bots.list();
             setBots(data);
@@ -50,6 +59,14 @@ export function useBot(id: string, interval = 2000) {
 
     const fetchBot = useCallback(async () => {
         if (!id) return;
+
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token) {
+            setIsLoading(false);
+            if (!bot) setError('Please sign in');
+            return;
+        }
+
         try {
             const [botData, runtimeData] = await Promise.all([
                 api.bots.get(id),
