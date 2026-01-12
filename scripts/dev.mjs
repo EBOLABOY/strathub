@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const npmCmd = 'npm';
-const useShell = process.platform === 'win32';
+const isWindows = process.platform === 'win32';
+const useShell = isWindows;
 
 function spawnNpm(args, options = {}) {
   return spawn(npmCmd, args, {
@@ -13,14 +14,11 @@ function spawnNpm(args, options = {}) {
   });
 }
 
-async function runNpm(args, options = {}) {
-  await new Promise((resolve, reject) => {
-    const child = spawnNpm(args, options);
-    child.on('error', reject);
-    child.on('exit', (code, signal) => {
-      if (code === 0) resolve(undefined);
-      reject(new Error(`Command failed: npm ${args.join(' ')} (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
-    });
+function spawnCmd(command, args, options = {}) {
+  return spawn(command, args, {
+    stdio: 'inherit',
+    shell: isWindows,
+    ...options,
   });
 }
 
@@ -67,11 +65,19 @@ const baseEnv = {
   ...envLocal,
 };
 
-await runNpm(['-w', 'packages/database', 'run', 'db:push'], {
-  env: {
-    ...baseEnv,
-    ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
-  },
+await new Promise((resolve, reject) => {
+  const child = spawnCmd('npx', ['prisma', 'db', 'push', '--skip-generate'], {
+    cwd: path.join(process.cwd(), 'packages', 'database'),
+    env: {
+      ...baseEnv,
+      ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+    },
+  });
+  child.on('error', reject);
+  child.on('exit', (code, signal) => {
+    if (code === 0) return resolve(undefined);
+    reject(new Error(`Command failed: npx prisma db push --skip-generate (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
+  });
 });
 
 console.log(`[dev] Starting API on :${apiPort}, Web on :${webPort}`);
@@ -105,6 +111,14 @@ function shutdown(exitCode) {
 
   for (const child of children) {
     try {
+      if (isWindows && child.pid) {
+        spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        continue;
+      }
+
       child.kill('SIGINT');
     } catch {
       // ignore
