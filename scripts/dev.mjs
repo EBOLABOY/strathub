@@ -2,11 +2,13 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCmd = 'npm';
+const useShell = process.platform === 'win32';
 
 function spawnNpm(args, options = {}) {
   return spawn(npmCmd, args, {
     stdio: 'inherit',
+    shell: useShell,
     ...options,
   });
 }
@@ -53,32 +55,39 @@ function readEnvLocal() {
 const envLocal = readEnvLocal();
 
 // Shared defaults for local dev (safe mode)
-const databaseUrl = process.env.DATABASE_URL ?? envLocal.DATABASE_URL ?? 'file:../database/prisma/dev.db';
+const databaseUrl = process.env.DATABASE_URL ?? envLocal.DATABASE_URL;
 const apiPort = process.env.API_PORT ?? envLocal.API_PORT ?? '3001';
 const webPort = process.env.WEB_PORT ?? envLocal.WEB_PORT ?? '3000';
 const jwtSecret = process.env.JWT_SECRET ?? envLocal.JWT_SECRET ?? 'dev-secret-change-me';
 
 console.log('[dev] Bootstrapping local DB schema...');
 
+const baseEnv = {
+  ...process.env,
+  ...envLocal,
+};
+
 await runNpm(['-w', 'packages/database', 'run', 'db:push'], {
   env: {
-    ...process.env,
-    ...envLocal,
-    DATABASE_URL: databaseUrl,
+    ...baseEnv,
+    ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
   },
 });
 
 console.log(`[dev] Starting API on :${apiPort}, Web on :${webPort}`);
-console.log(`[dev] DATABASE_URL=${databaseUrl}`);
+if (databaseUrl) {
+  console.log(`[dev] DATABASE_URL=${databaseUrl}`);
+} else {
+  console.log('[dev] DATABASE_URL not set (Prisma will load packages/database/.env)');
+}
 
 const children = [];
 
 function startChild(label, args, extraEnv) {
   const child = spawnNpm(args, {
     env: {
-      ...process.env,
-      ...envLocal,
-      DATABASE_URL: databaseUrl,
+      ...baseEnv,
+      ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
       ...extraEnv,
     },
   });
