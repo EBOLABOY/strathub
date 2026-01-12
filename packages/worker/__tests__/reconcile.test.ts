@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { prisma } from '@crypto-strategy-hub/database';
 import { ExchangeSimulator } from '@crypto-strategy-hub/exchange-simulator';
+import { generateClientOrderId } from '@crypto-strategy-hub/shared';
 import { createSimulatorExecutor } from '../src/simulator-executor.js';
 import { reconcileBot } from '../src/reconcile.js';
 
@@ -84,13 +85,14 @@ describe('Reconcile Loop 验收测试', () => {
         simulator.setBalance('USDT', '10000');
         simulator.setBalance('BNB', '10');
 
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         const order = await simulator.createOrder({
             symbol: 'REC-BNB/USDT',
             side: 'buy',
             type: 'limit',
             price: '580',
             amount: '1',
-            clientOrderId: 'gb1-test-001',
+            clientOrderId,
         });
 
         // 模拟成交
@@ -186,13 +188,14 @@ describe('Reconcile Loop 验收测试', () => {
         simulator.setTicker('REC-DOGE/USDT', '0.1');
         simulator.setBalance('USDT', '1000');
 
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         const order = await simulator.createOrder({
             symbol: 'REC-DOGE/USDT',
             side: 'buy',
             type: 'limit',
             price: '0.09',
             amount: '100',
-            clientOrderId: 'gb1-idempotent-001',
+            clientOrderId,
         });
         simulator.simulateFill(order.exchangeOrderId, '50', '0.09');
 
@@ -231,13 +234,14 @@ describe('Reconcile Loop 验收测试', () => {
         simulator.setTicker(testSymbol, '30');
         simulator.setBalance('USDT', '5000');
 
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         const order = await simulator.createOrder({
             symbol: testSymbol,
             side: 'buy',
             type: 'limit',
             price: '28',
             amount: '10',
-            clientOrderId: 'gb1-stable-001',
+            clientOrderId,
         });
 
         const executor = createSimulatorExecutor(simulator);
@@ -287,13 +291,14 @@ describe('Reconcile Loop 验收测试', () => {
         });
 
         // 创建 gb1 前缀的订单
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         await simulator.createOrder({
             symbol: 'REC-LINK/USDT',
             side: 'sell',
             type: 'limit',
             price: '16',
             amount: '10',
-            clientOrderId: 'gb1-bot-001', // gb1 前缀
+            clientOrderId,
         });
 
         const executor = createSimulatorExecutor(simulator);
@@ -305,7 +310,7 @@ describe('Reconcile Loop 验收测试', () => {
         // 验证只导入了 gb1 订单
         const orders = await prisma.order.findMany({ where: { botId: bot.id } });
         expect(orders.length).toBe(1);
-        expect(orders[0].clientOrderId).toBe('gb1-bot-001');
+        expect(orders[0].clientOrderId).toBe(clientOrderId);
     });
 
     /**
@@ -326,12 +331,13 @@ describe('Reconcile Loop 验收测试', () => {
         });
 
         // 创建一个待成交的订单
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         await prisma.order.create({
             data: {
                 botId: bot.id,
                 exchange: 'binance',
                 symbol: 'REC-FILL/USDT',
-                clientOrderId: 'gb1-fill-001',
+                clientOrderId,
                 exchangeOrderId: 'sim-order-fill-001',
                 side: 'buy',
                 type: 'limit',
@@ -355,7 +361,7 @@ describe('Reconcile Loop 验收测试', () => {
             type: 'limit',
             price: '100',
             amount: '10',
-            clientOrderId: 'gb1-fill-001',
+            clientOrderId,
         });
         // 模拟全部成交
         simulator.simulateFill(order.exchangeOrderId, '10', '100');
@@ -365,7 +371,7 @@ describe('Reconcile Loop 验收测试', () => {
 
         // 验证订单被推进到 FILLED
         const updatedOrder = await prisma.order.findFirst({
-            where: { botId: bot.id, clientOrderId: 'gb1-fill-001' },
+            where: { botId: bot.id, clientOrderId },
         });
         expect(updatedOrder!.status).toBe('FILLED');
         expect(updatedOrder!.filledAmount).toBe('10.00000000');
@@ -385,12 +391,13 @@ describe('Reconcile Loop 验收测试', () => {
         });
 
         // 1. 先在 DB 中创建订单（模拟之前已下单）
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         const dbOrder = await prisma.order.create({
             data: {
                 botId: bot.id,
                 exchange: 'binance',
                 symbol: 'ORDID-TEST/USDT',
-                clientOrderId: 'gb1-ordid-001',
+                clientOrderId,
                 exchangeOrderId: 'exc-12345',
                 side: 'buy',
                 type: 'limit',
@@ -439,12 +446,13 @@ describe('Reconcile Loop 验收测试', () => {
         });
 
         // 1. DB 中的订单
+        const clientOrderId = generateClientOrderId(bot.id, 1);
         const dbOrder = await prisma.order.create({
             data: {
                 botId: bot.id,
                 exchange: 'binance',
                 symbol: 'FORCE-CID/USDT',
-                clientOrderId: 'gb1-force-001',
+                clientOrderId,
                 exchangeOrderId: 'exc-force-001',
                 side: 'buy',
                 type: 'limit',
@@ -480,6 +488,6 @@ describe('Reconcile Loop 验收测试', () => {
 
         // 验证 Trade 落库时使用了 DB 的 clientOrderId
         const trade = await prisma.trade.findFirst({ where: { botId: bot.id, tradeId: 'trade-force-001' } });
-        expect(trade!.clientOrderId).toBe('gb1-force-001');
+        expect(trade!.clientOrderId).toBe(clientOrderId);
     });
 });
