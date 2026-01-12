@@ -7,6 +7,7 @@
 import { prisma, Prisma } from '@crypto-strategy-hub/database';
 import type { TradingExecutor, OpenOrder } from '@crypto-strategy-hub/shared';
 import type { StoppingResult } from './worker.js';
+import { classifyRetryableError, computeBackoffMs } from './retry.js';
 
 // Re-export for backward compatibility
 export type ExchangeExecutor = Pick<TradingExecutor, 'fetchOpenOrders' | 'cancelOrder'>;
@@ -33,6 +34,16 @@ export function createMockExecutor(openOrders: OpenOrder[] = []): ExchangeExecut
 // processStoppingBot 实现
 // ============================================================================
 
+const STOP_MAX_RETRIES = parseInt(process.env['WORKER_STOP_MAX_RETRIES'] ?? '5', 10);
+const STOP_BACKOFF = {
+    baseMs: parseInt(process.env['WORKER_STOP_BACKOFF_BASE_MS'] ?? '1000', 10),
+    maxMs: parseInt(process.env['WORKER_STOP_BACKOFF_MAX_MS'] ?? '30000', 10),
+    jitterRatio: 0.2,
+} as const;
+
+type StopRetryState = { attempts: number; nextAtMs: number };
+const stopRetryState = new Map<string, StopRetryState>(); // key: botId
+
 export function createProcessStoppingBot(
     executor: ExchangeExecutor
 ): (botId: string) => Promise<StoppingResult> {
@@ -57,6 +68,12 @@ export function createProcessStoppingBot(
             return { success: true }; // 已经不是 STOPPING，跳过
         }
 
+        const nowMs = Date.now();
+        const state = stopRetryState.get(botId);
+        if (state && nowMs < state.nextAtMs) {
+            return { success: true };
+        }
+
         // 2. 获取并撤销所有 open orders
         let canceledOrders = 0;
         let openOrders: OpenOrder[];
@@ -66,7 +83,15 @@ export function createProcessStoppingBot(
             console.log(`[Stopping] Bot ${botId}: found ${openOrders.length} open orders`);
         } catch (error) {
             console.error(`[Stopping] Bot ${botId}: failed to fetch open orders:`, error);
-            return { success: false, error: '503 EXCHANGE_UNAVAILABLE' };
+            return await handleStoppingFailure({
+                botId,
+                botStatusVersion: bot.statusVersion,
+                nowMs,
+                previousAttempts: state?.attempts ?? 0,
+                error,
+                message: '503 EXCHANGE_UNAVAILABLE',
+                canceledOrders,
+            });
         }
 
         // 逐个撤销，任一失败则终止
@@ -78,11 +103,15 @@ export function createProcessStoppingBot(
             } catch (error) {
                 // 任一 cancel 失败 → 保持 STOPPING，下次 tick 重试
                 console.error(`[Stopping] Bot ${botId}: failed to cancel order ${order.id}:`, error);
-                return {
-                    success: false,
-                    error: `Failed to cancel order ${order.id}`,
+                return await handleStoppingFailure({
+                    botId,
+                    botStatusVersion: bot.statusVersion,
+                    nowMs,
+                    previousAttempts: state?.attempts ?? 0,
+                    error,
+                    message: `Failed to cancel order ${order.id}`,
                     canceledOrders,
-                };
+                });
             }
         }
 
@@ -102,6 +131,8 @@ export function createProcessStoppingBot(
                 },
             });
 
+            stopRetryState.delete(botId);
+
             console.log(`[Stopping] Bot ${botId}: transitioned to STOPPED`);
             return {
                 success: true,
@@ -117,4 +148,52 @@ export function createProcessStoppingBot(
             throw error;
         }
     };
+}
+
+async function handleStoppingFailure(input: {
+    botId: string;
+    botStatusVersion: number;
+    nowMs: number;
+    previousAttempts: number;
+    error: unknown;
+    message: string;
+    canceledOrders: number;
+}): Promise<StoppingResult> {
+    const info = classifyRetryableError(input.error);
+    const attempt = input.previousAttempts + 1;
+
+    if (info.retryable && attempt < STOP_MAX_RETRIES) {
+        const backoffMs = computeBackoffMs(attempt, STOP_BACKOFF, info.retryAfterMs);
+        stopRetryState.set(input.botId, { attempts: attempt, nextAtMs: input.nowMs + backoffMs });
+        return { success: false, error: input.message, canceledOrders: input.canceledOrders };
+    }
+
+    stopRetryState.delete(input.botId);
+
+    try {
+        await prisma.bot.update({
+            where: {
+                id: input.botId,
+                status: 'STOPPING',
+                statusVersion: input.botStatusVersion,
+            },
+            data: {
+                status: 'ERROR',
+                statusVersion: input.botStatusVersion + 1,
+                lastError: `STOPPING_FAILED: ${info.code ?? 'UNKNOWN'}: ${info.message}`,
+            },
+        });
+
+        return {
+            success: false,
+            newStatus: 'ERROR',
+            error: input.message,
+            canceledOrders: input.canceledOrders,
+        };
+    } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+            return { success: true };
+        }
+        throw error;
+    }
 }

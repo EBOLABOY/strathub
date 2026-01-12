@@ -14,8 +14,49 @@
 
 import { prisma, Prisma } from '@crypto-strategy-hub/database';
 import type { GridConfig, PreviewMarketInfo, PreviewResult, TradingExecutor } from '@crypto-strategy-hub/shared';
-import { calculatePreview, generateClientOrderId } from '@crypto-strategy-hub/shared';
+import { calculatePreview, checkPriceBounds, generateClientOrderId } from '@crypto-strategy-hub/shared';
 import { Decimal } from 'decimal.js';
+import { classifyRetryableError, computeBackoffMs } from './retry.js';
+
+// ============================================================================
+// Retry Policy (V1)
+// ============================================================================
+
+const SUBMIT_MAX_RETRIES = parseInt(process.env['WORKER_ORDER_MAX_RETRIES'] ?? '5', 10);
+const SUBMIT_BACKOFF = {
+    baseMs: parseInt(process.env['WORKER_ORDER_BACKOFF_BASE_MS'] ?? '1000', 10),
+    maxMs: parseInt(process.env['WORKER_ORDER_BACKOFF_MAX_MS'] ?? '30000', 10),
+    jitterRatio: 0.2,
+} as const;
+
+type SubmitRetryState = { attempts: number; nextAtMs: number };
+const submitRetryState = new Map<string, SubmitRetryState>(); // key: Order.id
+
+async function markBotError(botId: string, reason: string): Promise<void> {
+    const current = await prisma.bot.findUnique({
+        where: { id: botId },
+        select: { status: true, statusVersion: true },
+    });
+    if (!current || current.status === 'ERROR') {
+        return;
+    }
+
+    try {
+        await prisma.bot.update({
+            where: { id: botId, statusVersion: current.statusVersion },
+            data: {
+                status: 'ERROR',
+                statusVersion: current.statusVersion + 1,
+                lastError: reason,
+            },
+        });
+    } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+            return;
+        }
+        throw error;
+    }
+}
 
 export interface ProcessTriggerOrderInput {
     executor: TradingExecutor;
@@ -78,6 +119,7 @@ async function submitOrderIntent(
     executor: TradingExecutor,
     order: {
         id: string;
+        botId: string;
         exchange: string;
         symbol: string;
         clientOrderId: string;
@@ -97,6 +139,13 @@ async function submitOrderIntent(
 
     // 如果已有 exchangeOrderId，则认为已提交（reconcile 导入的订单也会带 exchangeOrderId）
     if (order.submittedAt || order.exchangeOrderId) {
+        submitRetryState.delete(order.id);
+        return;
+    }
+
+    const nowMs = Date.now();
+    const state = submitRetryState.get(order.id);
+    if (state && nowMs < state.nextAtMs) {
         return;
     }
 
@@ -108,28 +157,45 @@ async function submitOrderIntent(
     }
 
     const now = new Date();
-    const placed = await executor.createOrder({
-        symbol: order.symbol,
-        side,
-        type,
-        price: order.price ?? undefined,
-        amount: order.amount,
-        clientOrderId: order.clientOrderId,
-    });
 
-    await prisma.order.update({
-        where: {
-            exchange_clientOrderId: {
-                exchange: order.exchange,
-                clientOrderId: order.clientOrderId,
+    try {
+        const placed = await executor.createOrder({
+            symbol: order.symbol,
+            side,
+            type,
+            price: order.price ?? undefined,
+            amount: order.amount,
+            clientOrderId: order.clientOrderId,
+        });
+
+        submitRetryState.delete(order.id);
+
+        await prisma.order.update({
+            where: {
+                exchange_clientOrderId: {
+                    exchange: order.exchange,
+                    clientOrderId: order.clientOrderId,
+                },
             },
-        },
-        data: {
-            exchangeOrderId: placed.exchangeOrderId,
-            status: placed.status,
-            submittedAt: now,
-        },
-    });
+            data: {
+                exchangeOrderId: placed.exchangeOrderId,
+                status: placed.status,
+                submittedAt: now,
+            },
+        });
+    } catch (error) {
+        const info = classifyRetryableError(error);
+        const nextAttempt = (state?.attempts ?? 0) + 1;
+
+        if (info.retryable && nextAttempt < SUBMIT_MAX_RETRIES) {
+            const backoffMs = computeBackoffMs(nextAttempt, SUBMIT_BACKOFF, info.retryAfterMs);
+            submitRetryState.set(order.id, { attempts: nextAttempt, nextAtMs: nowMs + backoffMs });
+            return;
+        }
+
+        submitRetryState.delete(order.id);
+        await markBotError(order.botId, `ORDER_SUBMIT_FAILED: ${info.code ?? 'UNKNOWN'}: ${info.message}`);
+    }
 }
 
 /**
@@ -201,6 +267,19 @@ export async function processTriggerOrder(
     // 使用传入的 marketInfo（实盘），或 fallback 到硬编码（测试）
     const market = input.marketInfo || buildMarketInfo(bot.symbol, pricePrecision, amountPrecision);
     const ticker = { last: input.tickerPrice };
+
+    // BoundsGate（ACC-GATE-001）：价格越界时不触发、不下单（不进入 ERROR）
+    try {
+        const gate = checkPriceBounds(
+            { priceMin: config.trigger.priceMin, priceMax: config.trigger.priceMax },
+            { currentPrice: ticker.last }
+        );
+        if (gate.blocked) {
+            return;
+        }
+    } catch {
+        return;
+    }
 
     // 3) 若存在上一腿 FILLED，则生成下一腿（不再依赖当前 ticker 触发）
     const lastFilled = await prisma.order.findFirst({

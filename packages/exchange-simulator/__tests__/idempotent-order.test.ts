@@ -11,8 +11,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { ExchangeSimulator, FakeClock, TimeoutError } from '../src/index.js';
 import { generateClientOrderId, ORDER_PREFIX } from '@crypto-strategy-hub/shared';
 
-// 使用固定的 botId 模拟测试（长度 >= 8）
-const TEST_BOT_ID = 'test-bot-001';
+// 使用固定的 botId 模拟测试（长度 >= 8，且前 8 位为 [a-z0-9]，符合 V1 clientOrderId 口径）
+const TEST_BOT_ID = 'a1b2c3d4-test-bot-001';
 
 describe('ACC-EX-001: 网络错误 + 幂等下单', () => {
     let simulator: ExchangeSimulator;

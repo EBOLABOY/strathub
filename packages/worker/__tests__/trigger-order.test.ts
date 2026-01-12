@@ -10,9 +10,9 @@
  * - clientOrderId 格式: gb1-{botId 前 8 位}-{intentSeq}
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { prisma } from '@crypto-strategy-hub/database';
-import { ExchangeSimulator } from '@crypto-strategy-hub/exchange-simulator';
+import { ExchangeSimulator, RateLimitError } from '@crypto-strategy-hub/exchange-simulator';
 import { createSimulatorExecutor } from '../src/simulator-executor.js';
 import { processTriggerOrder } from '../src/trigger-order.js';
 import { reconcileBot } from '../src/reconcile.js';
@@ -39,6 +39,24 @@ const gridConfig = JSON.stringify({
         basePrice: '100',
         riseSell: '5',
         fallBuy: '5',
+    },
+    order: { orderType: 'limit' },
+    sizing: {
+        amountMode: 'amount',
+        gridSymmetric: true,
+        symmetric: { orderQuantity: '10' },
+    },
+});
+
+const gridConfigWithBounds = JSON.stringify({
+    trigger: {
+        gridType: 'percent',
+        basePriceType: 'manual',
+        basePrice: '100',
+        riseSell: '5',
+        fallBuy: '5',
+        priceMin: '50',
+        priceMax: '150',
     },
     order: { orderType: 'limit' },
     sizing: {
@@ -567,5 +585,97 @@ describe('Trigger/Order Loop 验收测试', () => {
         // 不应创建订单
         const orders = await prisma.order.findMany({ where: { botId: bot.id } });
         expect(orders.length).toBe(0);
+    });
+
+    it('should NOT create order when price is out of bounds (BoundsGate)', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BOUND/USDT',
+                configJson: gridConfigWithBounds,
+                status: 'WAITING_TRIGGER',
+                statusVersion: 10,
+            },
+        });
+
+        const simulator = new ExchangeSimulator();
+        simulator.setBalance('USDT', '10000');
+        simulator.setBalance('BOUND', '100');
+        const executor = createSimulatorExecutor(simulator);
+
+        // 价格 200：超过 priceMax=150，即使超过卖出触发线也必须跳过
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '200' });
+        expect(executor.getCreateOrderCallCount()).toBe(0);
+
+        const ordersAfterBlocked = await prisma.order.findMany({ where: { botId: bot.id } });
+        expect(ordersAfterBlocked.length).toBe(0);
+
+        // 价格回到 140：在范围内且 >= sellTrigger(105)，允许下单
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '140' });
+        expect(executor.getCreateOrderCallCount()).toBe(1);
+
+        const ordersAfterAllowed = await prisma.order.findMany({ where: { botId: bot.id } });
+        expect(ordersAfterAllowed.length).toBe(1);
+    });
+
+    it('should transition bot to ERROR after max retries on rate limit (ACC-EX-002)', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-06T00:00:00Z'));
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'RATE-LIMIT/USDT',
+                configJson: gridConfig,
+                status: 'WAITING_TRIGGER',
+            },
+        });
+
+        let createOrderCalls = 0;
+        const alwaysRateLimitExecutor = {
+            async fetchOpenOrders() {
+                return [];
+            },
+            async fetchOpenOrdersFull() {
+                return [];
+            },
+            async fetchMyTrades() {
+                return [];
+            },
+            async cancelOrder() {
+                return;
+            },
+            async createOrder() {
+                createOrderCalls++;
+                throw new RateLimitError(2000);
+            },
+        } as const;
+
+        // 第一次：会创建 outbox 订单并尝试提交（失败，进入退避）
+        await processTriggerOrder(bot.id, { executor: alwaysRateLimitExecutor as any, tickerPrice: '90' });
+        expect(createOrderCalls).toBe(1);
+
+        // 后续重试：推进时间，直到达到 maxRetries=5
+        for (let i = 0; i < 4; i++) {
+            vi.setSystemTime(new Date(Date.now() + 60_000));
+            await processTriggerOrder(bot.id, { executor: alwaysRateLimitExecutor as any, tickerPrice: '90' });
+        }
+
+        expect(createOrderCalls).toBe(5);
+
+        // 不应产生重复订单意图
+        const orders = await prisma.order.findMany({ where: { botId: bot.id } });
+        expect(orders.length).toBe(1);
+        expect(orders[0]!.submittedAt).toBeNull();
+
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('ERROR');
+        expect(afterBot!.lastError).toContain('ORDER_SUBMIT_FAILED');
+
+        randomSpy.mockRestore();
+        vi.useRealTimers();
     });
 });

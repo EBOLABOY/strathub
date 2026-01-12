@@ -7,7 +7,7 @@
  * 3. STOPPING + 无 orders → 直接 STOPPED
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { prisma } from '@crypto-strategy-hub/database';
 import { createProcessStoppingBot, createMockExecutor, type ExchangeExecutor, type OpenOrder } from '../src/stopping-executor.js';
 
@@ -204,5 +204,58 @@ describe('STOPPING 执行器验收测试', () => {
         expect(afterBot!.status).toBe('STOPPING');
         expect(afterBot!.statusVersion).toBe(5);
         expect(afterBot!.runId).toBe('run-partial');
+    });
+
+    it('should transition to ERROR after exceeding max retries', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-06T10:00:00Z'));
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BNB/USDT',
+                configJson: dummyConfig,
+                status: 'STOPPING',
+                statusVersion: 5,
+                runId: 'run-stop-fail',
+            },
+        });
+
+        const alwaysFailExecutor: ExchangeExecutor = {
+            async fetchOpenOrders() {
+                throw new Error('Exchange unavailable');
+            },
+            async cancelOrder() {
+                throw new Error('Exchange unavailable');
+            },
+        };
+        const processStoppingBot = createProcessStoppingBot(alwaysFailExecutor);
+
+        // 前 4 次：保持 STOPPING
+        for (let i = 0; i < 4; i++) {
+            const result = await processStoppingBot(bot.id);
+            expect(result.success).toBe(false);
+
+            const midBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+            expect(midBot!.status).toBe('STOPPING');
+            expect(midBot!.statusVersion).toBe(5);
+
+            vi.setSystemTime(new Date(Date.now() + 60_000));
+        }
+
+        // 第 5 次：超限进入 ERROR
+        const finalResult = await processStoppingBot(bot.id);
+        expect(finalResult.success).toBe(false);
+        expect(finalResult.newStatus).toBe('ERROR');
+
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('ERROR');
+        expect(afterBot!.statusVersion).toBe(6);
+        expect(afterBot!.lastError).toContain('STOPPING_FAILED');
+
+        randomSpy.mockRestore();
+        vi.useRealTimers();
     });
 });
