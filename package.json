@@ -5,7 +5,7 @@
         "packages/*"
     ],
     "scripts": {
-        "build": "npm run build --workspaces",
+        "build": "npm -w packages/shared run build && npm run build --workspaces",
         "test": "npm run test --workspaces --if-present",
         "lint": "npm run lint --workspaces --if-present"
     },

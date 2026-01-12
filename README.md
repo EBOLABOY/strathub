@@ -43,3 +43,7 @@
 
 - `docs/spec/v1-freeze.md`
 - `docs/spec/idempotency.md`（幂等键唯一事实来源：`packages/shared/src/idempotency.ts`）
+
+## Testnet Soak（下一步）
+
+- `docs/runbook/testnet-soak.md`
