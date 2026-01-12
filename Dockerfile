@@ -16,7 +16,7 @@ RUN npm ci
 RUN npm -w packages/database run db:generate
 
 # Build all workspaces (api/worker/web/…)
-RUN npm run build --workspaces --if-present
+RUN npm run build
 
 FROM node:20-bookworm-slim AS runtime
 
