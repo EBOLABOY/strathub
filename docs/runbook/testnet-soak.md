@@ -36,6 +36,7 @@ ALLOW_MAINNET_TRADING=false
 
 ## 3. Soak 检查点（每天）
 
+- 快速检查（建议）：`npm run soak:check`（或在 Docker 里 `docker compose exec worker npm run soak:check`）
 - Bot 状态收敛：不应该长期卡在 `STOPPING` / `ERROR` 且没人知道原因
 - 幂等：同一个 intent 不应该产生多笔订单（看 DB `Order.clientOrderId` 唯一性）
 - 退避：触发限流/超时后应该 **退避**，并在耗尽后 **进入 ERROR**（而不是无限重试）

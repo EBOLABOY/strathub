@@ -7,7 +7,8 @@
     "scripts": {
         "build": "npm -w packages/shared run build && npm run build --workspaces",
         "test": "npm run test --workspaces --if-present",
-        "lint": "npm run lint --workspaces --if-present"
+        "lint": "npm run lint --workspaces --if-present",
+        "soak:check": "node scripts/soak-check.mjs"
     },
     "devDependencies": {
         "@types/node": "^22.10.0",
