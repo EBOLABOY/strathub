@@ -6,6 +6,10 @@
     ],
     "scripts": {
         "build": "npm -w packages/shared run build && npm run build --workspaces",
+        "dev": "node scripts/dev.mjs",
+        "dev:api": "npm -w packages/api run dev",
+        "dev:worker": "npm -w packages/worker run dev",
+        "dev:web": "npm -w packages/web run dev",
         "test": "npm run test --workspaces --if-present",
         "lint": "npm run lint --workspaces --if-present",
         "soak:check": "node scripts/soak-check.mjs"

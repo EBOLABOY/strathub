@@ -18,11 +18,17 @@
 ## 本地跑起来（不靠 Docker）
 
 1) 安装依赖：`npm ci`  
-2) 初始化 DB：`npm -w packages/database run db:push`  
-3) 启动 API：`PORT=3001 npm -w packages/api run dev`  
-4) 启动 Worker（默认模拟盘）：  
-   - `WORKER_ENABLED=true WORKER_ENABLE_TRADING=true WORKER_USE_REAL_EXCHANGE=false EXCHANGE_PROVIDER=mock npm -w packages/worker run dev`
-5) 启动 Web：`API_URL=http://localhost:3001 npm -w packages/web run dev`
+2) 一键启动（会自动 `db:push`）：`npm run dev`  
+3) 入口：Web `http://localhost:3000`，API `http://localhost:3001/health`
+
+说明：
+- `npm run dev` 默认用 **模拟盘**（`WORKER_USE_REAL_EXCHANGE=false`，`EXCHANGE_PROVIDER=mock`）。
+- 如需覆盖端口/数据库等本地参数，创建 `.env.local`（不会影响 Docker 的 `.env`）。
+
+手工启动（可选）：
+- API：`npm run dev:api`
+- Worker：`npm run dev:worker`
+- Web：`npm run dev:web`
 
 ## Docker 一键启动（推荐）
 
