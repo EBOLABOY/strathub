@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "@/i18n/navigation";
 
 export function useRequireAuth(): void {
   const router = useRouter();
@@ -11,8 +11,7 @@ export function useRequireAuth(): void {
     const token = localStorage.getItem("token");
     if (token) return;
 
-    const returnTo = encodeURIComponent(pathname || "/");
-    router.replace(`/login?returnTo=${returnTo}`);
+    const returnTo = pathname || "/";
+    router.replace({ pathname: "/login", query: { returnTo } });
   }, [router, pathname]);
 }
-

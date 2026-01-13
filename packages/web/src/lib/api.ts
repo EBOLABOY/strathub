@@ -68,6 +68,17 @@ export const api = {
             });
             return handleResponse<any>(res);
         },
+        async update(
+            id: string,
+            data: { name?: string; apiKey?: string; secret?: string; isTestnet?: boolean }
+        ) {
+            const res = await fetch(`${API_BASE}/accounts/${id}`, {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify(data),
+            });
+            return handleResponse<any>(res);
+        },
         async delete(id: string) {
             const res = await fetch(`${API_BASE}/accounts/${id}`, {
                 method: 'DELETE',
@@ -122,6 +133,17 @@ export const api = {
                 body: JSON.stringify({ configOverride: override }),
             });
             return handleResponse<PreviewResult>(res);
+        },
+        async delete(id: string) {
+            const res = await fetch(`${API_BASE}/bots/${id}`, {
+                method: 'DELETE',
+                headers: getHeaders(),
+            });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: res.statusText, code: 'UNKNOWN' }));
+                throw new ApiError(errorData.error || 'Failed to delete', res.status, errorData.code);
+            }
+            // 204 No Content
         },
         async control(id: string, action: 'start' | 'stop' | 'pause' | 'resume') {
             const res = await fetch(`${API_BASE}/bots/${id}/${action}`, {

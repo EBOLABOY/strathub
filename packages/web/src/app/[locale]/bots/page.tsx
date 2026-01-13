@@ -5,15 +5,22 @@ import { Sidebar } from "@/components/Sidebar";
 import { Bot as BotIcon, Plus, Pause, Play, Settings, Loader2, AlertCircle, Ban } from "lucide-react";
 import clsx from 'clsx';
 import { useBots } from "@/lib/hooks";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { BotStatus } from "@crypto-strategy-hub/shared";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useTranslations } from "next-intl";
 
 export default function BotsPage() {
     useRequireAuth();
 
     const router = useRouter();
     const { bots, isLoading, error } = useBots();
+    const t = useTranslations("bots");
+    const tStatus = useTranslations("botStatus");
+
+    const formatStatus = (status: BotStatus | string) => {
+        return tStatus.has(status as any) ? tStatus(status as any) : String(status);
+    };
 
     return (
         <div className="flex h-screen bg-page overflow-hidden">
@@ -22,13 +29,13 @@ export default function BotsPage() {
             <main className="flex-1 flex flex-col h-full overflow-hidden">
                 {/* Header */}
                 <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-8 sticky top-0 z-30">
-                    <h1 className="text-xl font-bold text-slate-800">My Bots</h1>
+                    <h1 className="text-xl font-bold text-slate-800">{t("title")}</h1>
                     <button
                         onClick={() => router.push('/bots/new')}
                         className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors shadow-lg shadow-teal-500/20"
                     >
                         <Plus className="w-4 h-4" />
-                        Create Bot
+                        {t("create")}
                     </button>
                 </header>
 
@@ -46,8 +53,8 @@ export default function BotsPage() {
                     ) : bots.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
                             <BotIcon className="w-12 h-12 mb-4 text-slate-300" />
-                            <p className="font-medium">No bots found</p>
-                            <button onClick={() => router.push('/bots/new')} className="mt-4 text-teal-600 font-semibold hover:underline">Deploy your first bot</button>
+                            <p className="font-medium">{t("emptyTitle")}</p>
+                            <button onClick={() => router.push('/bots/new')} className="mt-4 text-teal-600 font-semibold hover:underline">{t("emptyCta")}</button>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -96,16 +103,16 @@ export default function BotsPage() {
 
                                     {/* Metrics Grid */}
                                     <div className="grid grid-cols-2 gap-4 mb-6">
-                                        <div className="bg-slate-50 rounded-xl p-3">
-                                            <div className="text-xs text-slate-400 font-medium mb-1">PnL (Total)</div>
-                                            <div className="text-sm font-bold text-slate-400">
-                                                N/A
+                                            <div className="bg-slate-50 rounded-xl p-3">
+                                                <div className="text-xs text-slate-400 font-medium mb-1">{t("metrics.pnlTotal")}</div>
+                                                <div className="text-sm font-bold text-slate-400">
+                                                {t("metrics.na")}
+                                                </div>
                                             </div>
-                                        </div>
                                         <div className="bg-slate-50 rounded-xl p-3">
-                                            <div className="text-xs text-slate-400 font-medium mb-1">Status</div>
+                                            <div className="text-xs text-slate-400 font-medium mb-1">{t("metrics.status")}</div>
                                             <div className="text-sm font-bold text-slate-700 truncate">
-                                                {bot.status}
+                                                {formatStatus(bot.status)}
                                             </div>
                                         </div>
                                     </div>
@@ -126,7 +133,7 @@ export default function BotsPage() {
                                                         bot.status === BotStatus.ERROR ? "bg-rose-500" :
                                                             "bg-slate-400"
                                             )} />
-                                            {bot.status}
+                                            {formatStatus(bot.status)}
                                         </div>
 
                                         {/* Quick indicator, no action here to avoid accidental click */}
@@ -147,7 +154,7 @@ export default function BotsPage() {
                                 <div className="w-12 h-12 rounded-full bg-slate-50 group-hover:bg-white flex items-center justify-center mb-3 transition-colors shadow-sm">
                                     <Plus className="w-6 h-6" />
                                 </div>
-                                <span className="font-semibold text-sm">Deploy New Strategy</span>
+                                <span className="font-semibold text-sm">{t("newCard")}</span>
                             </div>
                         </div>
                     )}

@@ -1,17 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Bot, Loader2, AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export default function LoginPage() {
+    const t = useTranslations("login");
+    const tApiErrors = useTranslations("apiErrors");
+    const tMeta = useTranslations("meta");
     const router = useRouter();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const getApiErrorMessage = (err: unknown) => {
+        if (err instanceof ApiError && err.code && tApiErrors.has(err.code as any)) {
+            return tApiErrors(err.code as any);
+        }
+        return null;
+    };
 
     const finishLogin = (token: string) => {
         localStorage.setItem("token", token);
@@ -29,11 +40,7 @@ export default function LoginPage() {
             const { token } = await api.auth.login(email, password);
             finishLogin(token);
         } catch (err: any) {
-            if (err instanceof ApiError) {
-                setError(err.message);
-            } else {
-                setError("Failed to connect to server");
-            }
+            setError(getApiErrorMessage(err) ?? t("errors.failedConnect"));
         } finally {
             setIsLoading(false);
         }
@@ -44,7 +51,7 @@ export default function LoginPage() {
         setError(null);
 
         if (!email || !password) {
-            setError("Email and password are required");
+            setError(t("errors.emailPasswordRequired"));
             setIsLoading(false);
             return;
         }
@@ -61,11 +68,7 @@ export default function LoginPage() {
             const { token } = await api.auth.login(email, password);
             finishLogin(token);
         } catch (err: any) {
-            if (err instanceof ApiError) {
-                setError(err.message);
-            } else {
-                setError("Failed to connect to server");
-            }
+            setError(getApiErrorMessage(err) ?? t("errors.failedConnect"));
         } finally {
             setIsLoading(false);
         }
@@ -78,8 +81,8 @@ export default function LoginPage() {
                     <div className="w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center mb-3 shadow-lg shadow-teal-500/20">
                         <Bot className="w-7 h-7 text-white" />
                     </div>
-                    <h1 className="text-xl font-bold text-slate-800">Welcome Back</h1>
-                    <p className="text-sm text-slate-400">Sign in to StrategyHub</p>
+                    <h1 className="text-xl font-bold text-slate-800">{t("title")}</h1>
+                    <p className="text-sm text-slate-400">{t("subtitle", { brand: tMeta("title") })}</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
@@ -92,14 +95,14 @@ export default function LoginPage() {
 
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
-                            Email
+                            {t("email")}
                         </label>
                         <input
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all text-sm font-medium text-slate-700 bg-slate-50 focus:bg-white"
-                            placeholder="name@company.com"
+                            placeholder={t("placeholders.email")}
                             autoComplete="email"
                             required
                         />
@@ -107,14 +110,14 @@ export default function LoginPage() {
 
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
-                            Password
+                            {t("password")}
                         </label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all text-sm font-medium text-slate-700 bg-slate-50 focus:bg-white"
-                            placeholder="At least 8 characters"
+                            placeholder={t("placeholders.password")}
                             autoComplete="current-password"
                             required
                         />
@@ -125,7 +128,7 @@ export default function LoginPage() {
                         disabled={isLoading}
                         className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
                     >
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign In"}
+                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("signIn")}
                     </button>
 
                     <button
@@ -134,12 +137,16 @@ export default function LoginPage() {
                         onClick={handleCreateAccount}
                         className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition-all border border-slate-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
+                        {isLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            t("createAccount")
+                        )}
                     </button>
 
                     <div className="text-center mt-4">
                         <a href="#" className="text-xs font-medium text-teal-600 hover:text-teal-700">
-                            Detailed instructions for Testnet access
+                            {t("detailedInstructions")}
                         </a>
                     </div>
                 </form>

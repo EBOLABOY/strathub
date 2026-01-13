@@ -26,6 +26,20 @@ const createAccountSchema = z.object({
     isTestnet: z.boolean().optional().default(false),
 });
 
+const updateAccountSchema = z
+    .object({
+        name: z.string().min(1).max(100).optional(),
+        apiKey: z.string().min(1).optional(),
+        secret: z.string().min(1).optional(),
+        isTestnet: z.boolean().optional(),
+    })
+    .refine((data) => (data.apiKey === undefined) === (data.secret === undefined), {
+        message: 'Both apiKey and secret are required',
+    })
+    .refine((data) => Object.keys(data).length > 0, {
+        message: 'At least one field is required',
+    });
+
 // DTO - Never expose encryptedCredentials
 interface AccountDTO {
     id: string;
@@ -126,6 +140,87 @@ accountsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
             if (error.code === 'P2002') {
                 // Unique constraint failed on (userId, exchange, name)
+                next(createApiError(
+                    'Exchange account with this name already exists for this exchange',
+                    409,
+                    'EXCHANGE_ACCOUNT_ALREADY_EXISTS'
+                ));
+                return;
+            }
+        }
+        next(error);
+    }
+});
+
+// PUT /api/accounts/:accountId - Update exchange account (no credentials returned)
+accountsRouter.put('/:accountId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = requireUserId(req);
+        const { accountId } = req.params;
+        const { name, apiKey, secret, isTestnet } = updateAccountSchema.parse(req.body);
+
+        const account = await prisma.exchangeAccount.findFirst({
+            where: { id: accountId, userId },
+            select: {
+                id: true,
+                exchange: true,
+                name: true,
+                isTestnet: true,
+                encryptedCredentials: true,
+                createdAt: true,
+            },
+        });
+
+        if (!account) {
+            throw createApiError('Account not found', 404, 'EXCHANGE_ACCOUNT_NOT_FOUND');
+        }
+
+        const nextIsTestnet = isTestnet ?? account.isTestnet;
+        const isSwitchingToMainnet = isTestnet === false && account.isTestnet !== false;
+        const updatingCredentials = apiKey !== undefined && secret !== undefined;
+
+        // Security: never allow storing mainnet credentials unencrypted.
+        // - Switching from testnet -> mainnet requires encryption enabled.
+        // - Updating credentials on a mainnet account requires encryption enabled.
+        if (!nextIsTestnet && !isEncryptionEnabled() && (isSwitchingToMainnet || updatingCredentials)) {
+            throw createApiError(
+                'Mainnet accounts require encryption. Set CREDENTIALS_ENCRYPTION_KEY.',
+                403,
+                'MAINNET_ACCOUNT_FORBIDDEN'
+            );
+        }
+
+        let encryptedCredentials: string | undefined;
+        if (updatingCredentials) {
+            const credentialsJson = JSON.stringify({ apiKey, secret });
+            if (isEncryptionEnabled()) {
+                encryptedCredentials = encryptCredentials(credentialsJson);
+            } else {
+                console.warn('[SECURITY] Credentials stored unencrypted - CREDENTIALS_ENCRYPTION_KEY not set');
+                encryptedCredentials = credentialsJson;
+            }
+        }
+
+        const updated = await prisma.exchangeAccount.update({
+            where: { id: accountId },
+            data: {
+                ...(name !== undefined ? { name } : {}),
+                ...(isTestnet !== undefined ? { isTestnet } : {}),
+                ...(encryptedCredentials !== undefined ? { encryptedCredentials } : {}),
+            },
+            select: {
+                id: true,
+                exchange: true,
+                name: true,
+                isTestnet: true,
+                createdAt: true,
+            },
+        });
+
+        res.json(toAccountDTO(updated));
+    } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === 'P2002') {
                 next(createApiError(
                     'Exchange account with this name already exists for this exchange',
                     409,

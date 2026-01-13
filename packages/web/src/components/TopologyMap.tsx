@@ -2,18 +2,22 @@
 "use client";
 
 import { Bot, Layers, Server, Database, Globe } from 'lucide-react';
+import { useTranslations } from "next-intl";
 
 export function TopologyMap() {
+    const t = useTranslations("topology");
+    const tMeta = useTranslations("meta");
+
     return (
         <div className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50 h-[400px] relative overflow-hidden flex flex-col">
             <div className="flex justify-between items-center mb-4 z-10">
-                <h3 className="text-lg font-bold text-slate-700">System Topology</h3>
+                <h3 className="text-lg font-bold text-slate-700">{t("title")}</h3>
                 <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 relative">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     </span>
-                    <span className="text-xs text-emerald-600 font-medium">System Online</span>
+                    <span className="text-xs text-emerald-600 font-medium">{t("statusOnline")}</span>
                 </div>
             </div>
 
@@ -40,7 +44,7 @@ export function TopologyMap() {
                         <div className="absolute inset-0 bg-teal-50 rounded-2xl animate-pulse opacity-50"></div>
                         <Layers className="w-10 h-10 text-teal-600 relative z-10" />
                     </div>
-                    <span className="mt-2 text-sm font-bold text-slate-700 bg-white/80 px-2 rounded-md backdrop-blur-sm">StrategyHub</span>
+                    <span className="mt-2 text-sm font-bold text-slate-700 bg-white/80 px-2 rounded-md backdrop-blur-sm">{tMeta("title")}</span>
                 </div>
 
                 {/* Satellite Nodes */}
@@ -49,7 +53,7 @@ export function TopologyMap() {
                     <div className="w-12 h-12 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer">
                         <Bot className="w-6 h-6 text-sky-500" />
                     </div>
-                    <span className="mt-1 text-xs font-semibold text-slate-500">Workers</span>
+                    <span className="mt-1 text-xs font-semibold text-slate-500">{t("nodes.workers")}</span>
                 </div>
 
                 {/* Top Right: Exchange */}
@@ -57,7 +61,7 @@ export function TopologyMap() {
                     <div className="w-12 h-12 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer">
                         <Globe className="w-6 h-6 text-indigo-500" />
                     </div>
-                    <span className="mt-1 text-xs font-semibold text-slate-500">Binance</span>
+                    <span className="mt-1 text-xs font-semibold text-slate-500">{t("nodes.exchange")}</span>
                 </div>
 
                 {/* Bottom Left: DB */}
@@ -65,7 +69,7 @@ export function TopologyMap() {
                     <div className="w-12 h-12 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer">
                         <Database className="w-6 h-6 text-amber-500" />
                     </div>
-                    <span className="mt-1 text-xs font-semibold text-slate-500">Database</span>
+                    <span className="mt-1 text-xs font-semibold text-slate-500">{t("nodes.database")}</span>
                 </div>
 
                 {/* Bottom Right: API */}
@@ -73,7 +77,7 @@ export function TopologyMap() {
                     <div className="w-12 h-12 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer">
                         <Server className="w-6 h-6 text-rose-500" />
                     </div>
-                    <span className="mt-1 text-xs font-semibold text-slate-500">API Gateway</span>
+                    <span className="mt-1 text-xs font-semibold text-slate-500">{t("nodes.api")}</span>
                 </div>
 
             </div>

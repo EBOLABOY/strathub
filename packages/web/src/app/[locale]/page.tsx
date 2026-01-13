@@ -4,8 +4,19 @@ import { KPICards } from "@/components/KPICards"; // Assuming standard exports
 import { MainChart } from "@/components/MainChart";
 import { TopologyMap } from "@/components/TopologyMap";
 import { Bell, Search } from "lucide-react";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 
-export default function Dashboard() {
+export default async function Dashboard({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+
+  const t = await getTranslations("dashboard");
+  const tStatus = await getTranslations("botStatus");
+
   return (
     <div className="flex h-screen bg-page overflow-hidden">
       {/* Sidebar */}
@@ -16,16 +27,16 @@ export default function Dashboard() {
 
         {/* Header */}
         <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-8 sticky top-0 z-30">
-          <h1 className="text-xl font-bold text-slate-800">Overview</h1>
+          <h1 className="text-xl font-bold text-slate-800">{t("title")}</h1>
 
           <div className="flex items-center gap-6">
             {/* Real/Sim Switch */}
             <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mode</span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("modeLabel")}</span>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" className="sr-only peer" />
                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
-                <span className="ml-2 text-sm font-medium text-slate-700 peer-checked:text-teal-600">Real</span>
+                <span className="ml-2 text-sm font-medium text-slate-700 peer-checked:text-teal-600">{t("modeReal")}</span>
               </label>
             </div>
 
@@ -50,8 +61,8 @@ export default function Dashboard() {
           {/* 1. KPI Cards */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-slate-700">Key Metrics</h2>
-              <span className="text-xs text-slate-400">Last updated: Just now</span>
+              <h2 className="text-lg font-bold text-slate-700">{t("keyMetricsTitle")}</h2>
+              <span className="text-xs text-slate-400">{t("lastUpdated", { time: t("justNow") })}</span>
             </div>
             <KPICards />
           </section>
@@ -72,16 +83,16 @@ export default function Dashboard() {
           {/* 3. Recent Activity / Status List (Placeholder for now) */}
           <section className="bg-white rounded-2xl shadow-diffuse border border-slate-50 p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-slate-700">Active Bots</h3>
-              <button className="text-sm text-teal-600 font-medium hover:text-teal-700">View All</button>
+              <h3 className="text-lg font-bold text-slate-700">{t("activeBotsTitle")}</h3>
+              <button className="text-sm text-teal-600 font-medium hover:text-teal-700">{t("viewAll")}</button>
             </div>
 
             {/* Simple Table Header */}
             <div className="grid grid-cols-5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-2">
-              <div className="col-span-2">Bot Name</div>
-              <div>Status</div>
-              <div>PnL (24h)</div>
-              <div className="text-right">Action</div>
+              <div className="col-span-2">{t("table.botName")}</div>
+              <div>{t("table.status")}</div>
+              <div>{t("table.pnl24h")}</div>
+              <div className="text-right">{t("table.action")}</div>
             </div>
 
             {/* List Items */}
@@ -92,20 +103,20 @@ export default function Dashboard() {
                     B{i}
                   </div>
                   <div>
-                    <div className="font-semibold text-slate-700 text-sm">Grid-BNB-USDT-{i}</div>
-                    <div className="text-xs text-slate-400">Binance • Limit</div>
+                    <div className="font-semibold text-slate-700 text-sm">{t("demoBotName", { symbol: "BNB/USDT", i })}</div>
+                    <div className="text-xs text-slate-400">{t("exchangeLimit")}</div>
                   </div>
                 </div>
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    Running
+                    {tStatus("RUNNING")}
                   </span>
                 </div>
                 <div className="text-sm font-semibold text-slate-700">+$124.50</div>
                 <div className="text-right">
                   <button className="text-xs font-medium text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all">
-                    Manage
+                    {t("manage")}
                   </button>
                 </div>
               </div>

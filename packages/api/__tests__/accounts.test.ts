@@ -222,6 +222,70 @@ describe('Accounts API', () => {
         });
     });
 
+    describe('PUT /api/accounts/:accountId', () => {
+        it('should update account name successfully', async () => {
+            const app = await createTestApp();
+
+            const account = await prisma.exchangeAccount.create({
+                data: {
+                    userId: testUserId,
+                    exchange: 'binance',
+                    name: `update-me-${Date.now()}`,
+                    encryptedCredentials: '{}',
+                    isTestnet: true,
+                },
+            });
+
+            const res = await request(app)
+                .put(`/api/accounts/${account.id}`)
+                .set('Authorization', `Bearer ${testToken}`)
+                .send({ name: `updated-${Date.now()}` });
+
+            expect(res.status).toBe(200);
+            expect(res.body.id).toBe(account.id);
+            expect(res.body.name).toMatch(/^updated-/);
+
+            const updated = await prisma.exchangeAccount.findUnique({
+                where: { id: account.id },
+                select: { name: true },
+            });
+            expect(updated?.name).toBe(res.body.name);
+        });
+
+        it('should return 403 MAINNET_ACCOUNT_FORBIDDEN when switching to mainnet without encryption key', async () => {
+            const originalKey = process.env['CREDENTIALS_ENCRYPTION_KEY'];
+            delete process.env['CREDENTIALS_ENCRYPTION_KEY'];
+
+            try {
+                const app = await createTestApp();
+
+                const account = await prisma.exchangeAccount.create({
+                    data: {
+                        userId: testUserId,
+                        exchange: 'binance',
+                        name: `switch-mainnet-${Date.now()}`,
+                        encryptedCredentials: '{}',
+                        isTestnet: true,
+                    },
+                });
+
+                const res = await request(app)
+                    .put(`/api/accounts/${account.id}`)
+                    .set('Authorization', `Bearer ${testToken}`)
+                    .send({ isTestnet: false });
+
+                expect(res.status).toBe(403);
+                expect(res.body.code).toBe('MAINNET_ACCOUNT_FORBIDDEN');
+            } finally {
+                if (originalKey) {
+                    process.env['CREDENTIALS_ENCRYPTION_KEY'] = originalKey;
+                } else {
+                    delete process.env['CREDENTIALS_ENCRYPTION_KEY'];
+                }
+            }
+        });
+    });
+
     describe('DELETE /api/accounts/:accountId', () => {
         it('should delete account successfully when no bots exist', async () => {
             const app = await createTestApp();

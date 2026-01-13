@@ -2,33 +2,45 @@
 "use client";
 
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { useTranslations } from "next-intl";
 
 const DATA = [
-    { name: 'Mon', value: 4000 },
-    { name: 'Tue', value: 3000 },
-    { name: 'Wed', value: 2000 },
-    { name: 'Thu', value: 2780 },
-    { name: 'Fri', value: 1890 },
-    { name: 'Sat', value: 2390 },
-    { name: 'Sun', value: 3490 },
-    { name: 'Mon2', value: 4200 },
-    { name: 'Tue2', value: 3800 },
-    { name: 'Wed2', value: 5000 },
-    { name: 'Thu2', value: 4800 },
+    { name: '1', value: 4000 },
+    { name: '2', value: 3000 },
+    { name: '3', value: 2000 },
+    { name: '4', value: 2780 },
+    { name: '5', value: 1890 },
+    { name: '6', value: 2390 },
+    { name: '7', value: 3490 },
+    { name: '8', value: 4200 },
+    { name: '9', value: 3800 },
+    { name: '10', value: 5000 },
+    { name: '11', value: 4800 },
 ];
 
 export function MainChart() {
+    const t = useTranslations("chart");
+
     return (
         <div className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50 h-[400px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h3 className="text-lg font-bold text-slate-700">Portfolio Performance</h3>
-                    <p className="text-sm text-slate-400">Net Asset Value (NAV) over time</p>
+                    <h3 className="text-lg font-bold text-slate-700">{t("title")}</h3>
+                    <p className="text-sm text-slate-400">{t("subtitle")}</p>
                 </div>
                 <div className="flex gap-2">
-                    {['1H', '1D', '1W', '1M', '1Y'].map(pd => (
-                        <button key={pd} className="px-3 py-1 text-xs font-medium text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors">
-                            {pd}
+                    {[
+                        { key: "h1", label: t("periods.h1") },
+                        { key: "d1", label: t("periods.d1") },
+                        { key: "w1", label: t("periods.w1") },
+                        { key: "m1", label: t("periods.m1") },
+                        { key: "y1", label: t("periods.y1") },
+                    ].map((period) => (
+                        <button
+                            key={period.key}
+                            className="px-3 py-1 text-xs font-medium text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                            {period.label}
                         </button>
                     ))}
                 </div>

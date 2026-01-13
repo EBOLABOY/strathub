@@ -1,0 +1,255 @@
+{
+  "nav": {
+    "dashboard": "概览",
+    "bots": "机器人",
+    "analytics": "分析",
+    "portfolio": "资产",
+    "settings": "设置"
+  },
+  "sidebar": {
+    "user": "用户",
+    "plan": "专业版",
+    "logout": "退出登录"
+  },
+  "language": {
+    "label": "语言",
+    "zh": "中文",
+    "en": "英文"
+  },
+  "meta": {
+    "title": "策略中枢",
+    "description": "加密策略中枢"
+  },
+  "errors": {
+    "authRequired": "请先登录",
+    "fetchBots": "获取机器人列表失败",
+    "fetchBotDetails": "获取机器人详情失败",
+    "unknown": "未知错误"
+  },
+  "apiErrors": {
+    "EMAIL_EXISTS": "邮箱已存在",
+    "INVALID_CREDENTIALS": "邮箱或密码错误",
+    "UNAUTHORIZED": "未授权",
+    "INVALID_TOKEN": "无效的登录凭证",
+    "USER_NOT_FOUND": "用户不存在",
+    "BAD_REQUEST": "请求参数错误",
+    "BOT_NOT_FOUND": "机器人不存在",
+    "INVALID_STATE_TRANSITION": "状态转换无效",
+    "INVALID_STATE_FOR_CONFIG_UPDATE": "当前状态不允许修改配置",
+    "BOT_ALREADY_EXISTS": "同账户同币对的机器人已存在",
+    "INVALID_CONFIG": "配置 JSON 解析失败",
+    "VALIDATION_ERROR": "参数校验失败",
+    "CONFIG_VALIDATION_ERROR": "配置校验失败，请查看预览详情",
+    "KILL_SWITCH_LOCKED": "Kill Switch 已启用，禁止操作",
+    "CONCURRENT_MODIFICATION": "并发修改，请重试",
+    "EXCHANGE_UNAVAILABLE": "交易所不可用",
+    "EXCHANGE_ACCOUNT_NOT_FOUND": "交易所账户不存在",
+    "EXCHANGE_ACCOUNT_ALREADY_EXISTS": "交易所账户已存在",
+    "ACCOUNT_HAS_BOTS": "该账户下存在机器人，无法删除",
+    "INVALID_STATE_FOR_DELETE": "当前状态不允许删除，请先停止机器人",
+    "MAINNET_ACCOUNT_FORBIDDEN": "未配置加密密钥，禁止创建主网账户",
+    "INTERNAL_ERROR": "内部错误"
+  },
+  "previewIssues": {
+    "UNSUPPORTED_BASE_PRICE_TYPE": "V1 不支持该 basePriceType（请用 current/manual）",
+    "MISSING_BASE_PRICE": "使用 manual 时必须填写 basePrice",
+    "INVALID_SIZING_CONFIG": "下单金额配置不完整（缺少 symmetric/asymmetric）",
+    "BALANCE_UNAVAILABLE": "无法获取余额（百分比下单无法计算）",
+    "BELOW_MIN_AMOUNT": "下单数量低于交易所最小下单量",
+    "BELOW_MIN_NOTIONAL": "下单金额低于交易所最小名义金额（请提高下单金额）"
+  },
+  "botStatus": {
+    "DRAFT": "草稿",
+    "WAITING_TRIGGER": "等待触发",
+    "RUNNING": "运行中",
+    "PAUSED": "已暂停",
+    "STOPPING": "停止中",
+    "STOPPED": "已停止",
+    "ERROR": "错误"
+  },
+  "login": {
+    "title": "欢迎回来",
+    "subtitle": "登录 {brand}",
+    "email": "邮箱",
+    "password": "密码",
+    "signIn": "登录",
+    "createAccount": "创建账号",
+    "detailedInstructions": "测试网接入说明",
+    "placeholders": {
+      "email": "name@company.com",
+      "password": "至少 8 位字符"
+    },
+    "errors": {
+      "emailExists": "邮箱已存在",
+      "invalidCredentials": "邮箱或密码错误",
+      "failedConnect": "无法连接到服务器",
+      "emailPasswordRequired": "邮箱和密码不能为空"
+    }
+  },
+  "dashboard": {
+    "title": "概览",
+    "modeLabel": "模式",
+    "modeReal": "实盘",
+    "demoBotName": "网格-{symbol}-{i}",
+    "keyMetricsTitle": "关键指标",
+    "lastUpdated": "最后更新：{time}",
+    "justNow": "刚刚",
+    "activeBotsTitle": "活跃机器人",
+    "viewAll": "查看全部",
+    "table": {
+      "botName": "机器人",
+      "status": "状态",
+      "pnl24h": "收益（24小时）",
+      "action": "操作"
+    },
+    "exchangeLimit": "Binance · 限价单",
+    "manage": "管理"
+  },
+  "kpi": {
+    "totalProfit": "总收益",
+    "activeBots": "活跃机器人",
+    "winRate": "胜率",
+    "volume24h": "成交量（24小时）"
+  },
+  "chart": {
+    "title": "资产表现",
+    "subtitle": "净值（NAV）随时间变化",
+    "periods": {
+      "h1": "1小时",
+      "d1": "1天",
+      "w1": "1周",
+      "m1": "1月",
+      "y1": "1年"
+    }
+  },
+  "topology": {
+    "title": "系统拓扑",
+    "statusOnline": "系统在线",
+    "nodes": {
+      "workers": "工作进程",
+      "exchange": "Binance",
+      "database": "数据库",
+      "api": "API 网关"
+    }
+  },
+  "bots": {
+    "title": "我的机器人",
+    "create": "创建机器人",
+    "emptyTitle": "没有找到机器人",
+    "emptyCta": "部署你的第一个机器人",
+    "metrics": {
+      "pnlTotal": "总收益",
+      "status": "状态",
+      "na": "暂无"
+    },
+    "newCard": "部署新策略"
+  },
+  "botNew": {
+    "title": "创建机器人",
+    "exchangeAccountLabel": "交易所账户",
+    "selectAccountPlaceholder": "选择账户...",
+    "createMockTitle": "创建用于测试的模拟账户",
+    "createMockButton": "测试账户",
+    "refreshTitle": "刷新账户列表",
+    "noAccounts": "未找到交易所账户。请先创建测试账户再继续。",
+    "symbolLabel": "交易对",
+    "symbolPlaceholder": "例如：BNB/USDT",
+    "configLabel": "配置（JSON）",
+    "submit": "创建草稿",
+    "testAccountName": "测试账户",
+    "errors": {
+      "loadAccounts": "加载账户失败",
+      "createTestAccount": "创建测试账户失败",
+      "createBot": "创建机器人失败"
+    }
+  },
+  "botDetail": {
+    "notFound": "机器人不存在",
+    "backToList": "返回列表",
+    "idPrefix": "ID：{id}",
+    "preview": "预览",
+    "start": "启动",
+    "pause": "暂停",
+    "resume": "继续",
+    "stop": "停止",
+    "riskAnalysisTitle": "风险分析与预览",
+    "healthCheck": "健康检查",
+    "previewOk": "配置有效，未发现风险。",
+    "estimates": "估算",
+    "spread": "价差",
+    "estFee": "预计手续费（往返）",
+    "estNetProfit": "预计净收益",
+    "orderCount": "订单数量",
+    "runId": "运行 ID",
+    "statusVersion": "状态版本",
+    "lastError": "最近错误",
+    "none": "无",
+    "config": "配置",
+    "revision": "修订：{revision}",
+    "actions": {
+      "failed": "{action}机器人失败",
+      "previewFailed": "预览机器人失败",
+      "deleteFailed": "删除机器人失败"
+    },
+    "delete": "删除",
+    "deleteModalTitle": "删除机器人",
+    "deleteModalSubtitle": "此操作无法撤销",
+    "cancel": "取消",
+    "confirmDelete": "确认删除"
+  },
+  "accounts": {
+    "title": "交易所账户",
+    "subtitle": "管理你的交易所 API 连接",
+    "add": "添加账户",
+    "securityTitle": "V1 安全提示",
+    "securityBody": "该版本会以明文存储凭证。仅使用测试网 API Key。主网账户需要加密（尚未启用）。",
+    "emptyTitle": "还没有交易所账户",
+    "emptySubtitle": "点击“添加账户”绑定你的第一个交易所。",
+    "network": {
+      "testnet": "测试网",
+      "mainnet": "主网"
+    },
+    "created": "创建时间：{date}",
+    "edit": "编辑",
+    "delete": "删除",
+    "createModalTitle": "添加交易所账户",
+    "editModalTitle": "编辑交易所账户",
+    "fields": {
+      "name": "名称",
+      "exchange": "交易所",
+      "apiKey": "API Key",
+      "secret": "密钥"
+    },
+    "placeholders": {
+      "name": "例如：我的测试网账户",
+      "apiKey": "输入 API Key",
+      "secret": "输入密钥"
+    },
+    "editCredentialsHint": "留空表示不修改当前密钥",
+    "testnetLabel": "测试网账户",
+    "testnetHint": "主网账户需要加密（V1 暂不支持）",
+    "cancel": "取消",
+    "create": "创建",
+    "update": "保存",
+    "deleteModalTitle": "删除账户",
+    "deleteModalSubtitle": "此操作不可撤销",
+    "deleteModalConfirm": "确定要删除 {name} 吗？",
+    "errors": {
+      "load": "加载账户失败",
+      "create": "创建账户失败",
+      "update": "更新账户失败",
+      "credentialsPair": "API Key 和密钥必须同时填写",
+      "delete": "删除账户失败"
+    }
+  },
+  "analytics": {
+    "title": "分析",
+    "comingSoonTitle": "即将上线",
+    "comingSoonBody": "V1 先冻结 API 契约与可靠性。分析功能计划在 V2 提供。"
+  },
+  "portfolio": {
+    "title": "资产",
+    "comingSoonTitle": "即将上线",
+    "comingSoonBody": "资产视图会在我们接入真实交易所余额后上线。"
+  }
+}

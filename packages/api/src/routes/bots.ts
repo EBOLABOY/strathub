@@ -186,6 +186,42 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
         }
     });
 
+    // DELETE /api/bots/:botId - 删除（只允许 DRAFT/STOPPED/ERROR）
+    router.delete('/:botId', async (req, res, next) => {
+        try {
+            const userId = requireUserId(req);
+            const { botId } = req.params;
+
+            const bot = await prisma.bot.findFirst({
+                where: { id: botId, userId },
+                select: { id: true, status: true },
+            });
+
+            if (!bot) {
+                throw createApiError('Bot not found', 404, 'BOT_NOT_FOUND');
+            }
+
+            const status = bot.status as BotStatus;
+            const canDelete =
+                status === BotStatus.DRAFT ||
+                status === BotStatus.STOPPED ||
+                status === BotStatus.ERROR;
+
+            if (!canDelete) {
+                throw createApiError(
+                    `Cannot delete bot in ${bot.status} state`,
+                    409,
+                    'INVALID_STATE_FOR_DELETE'
+                );
+            }
+
+            await prisma.bot.delete({ where: { id: botId } });
+            res.status(204).send();
+        } catch (error) {
+            next(error);
+        }
+    });
+
     // PUT /api/bots/:botId/config - 更新配置
     router.put('/:botId/config', async (req, res, next) => {
         try {

@@ -4,10 +4,11 @@
 import { ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, DollarSign, Activity, Zap } from 'lucide-react';
 import clsx from 'clsx';
+import { useTranslations } from "next-intl";
 
 const KPI_DATA = [
     {
-        label: 'Total Profit',
+        id: 'totalProfit',
         value: '$12,450.00',
         trend: '+12.5%',
         isPositive: true,
@@ -16,7 +17,7 @@ const KPI_DATA = [
         data: [10, 15, 12, 20, 25, 22, 30, 28, 35, 40]
     },
     {
-        label: 'Active Bots',
+        id: 'activeBots',
         value: '8',
         trend: '+2',
         isPositive: true,
@@ -25,7 +26,7 @@ const KPI_DATA = [
         data: [5, 6, 6, 7, 6, 8, 8, 9, 8, 8]
     },
     {
-        label: 'Win Rate',
+        id: 'winRate',
         value: '68.5%',
         trend: '-1.2%',
         isPositive: false,
@@ -34,7 +35,7 @@ const KPI_DATA = [
         data: [70, 69, 71, 68, 65, 66, 68, 67, 68, 68.5]
     },
     {
-        label: '24h Volume',
+        id: 'volume24h',
         value: '$48.2k',
         trend: '+5.4%',
         isPositive: true,
@@ -45,17 +46,19 @@ const KPI_DATA = [
 ];
 
 export function KPICards() {
+    const t = useTranslations("kpi");
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {KPI_DATA.map((kpi) => (
                 <div
-                    key={kpi.label}
+                    key={kpi.id}
                     className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50 transition-transform duration-300 hover:-translate-y-1 relative overflow-hidden group"
                 >
                     {/* Top Row: Icon and Label */}
                     <div className="flex justify-between items-start mb-2">
                         <div>
-                            <div className="text-slate-400 text-sm font-medium mb-1">{kpi.label}</div>
+                            <div className="text-slate-400 text-sm font-medium mb-1">{t(kpi.id)}</div>
                             <div className="text-3xl font-bold text-slate-800 tracking-tight">{kpi.value}</div>
                         </div>
                         <div className={clsx(
@@ -85,7 +88,7 @@ export function KPICards() {
                             >
                                 <AreaChart data={kpi.data.map(val => ({ val }))}>
                                     <defs>
-                                        <linearGradient id={`gradient-${kpi.label}`} x1="0" y1="0" x2="0" y2="1">
+                                        <linearGradient id={`gradient-${kpi.id}`} x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor={kpi.color} stopOpacity={0.3} />
                                             <stop offset="95%" stopColor={kpi.color} stopOpacity={0} />
                                         </linearGradient>
@@ -96,7 +99,7 @@ export function KPICards() {
                                         stroke={kpi.color}
                                         strokeWidth={2}
                                         fillOpacity={1}
-                                        fill={`url(#gradient-${kpi.label})`}
+                                        fill={`url(#gradient-${kpi.id})`}
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>

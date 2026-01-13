@@ -2,8 +2,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError } from './api';
 import { Bot, BotStatus } from '@crypto-strategy-hub/shared';
+import { useTranslations } from "next-intl";
 
 export function useBots(interval = 5000) {
+    const t = useTranslations("errors");
+    const tApiErrors = useTranslations("apiErrors");
+
     const [bots, setBots] = useState<Bot[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -13,7 +17,7 @@ export function useBots(interval = 5000) {
         if (!token) {
             setIsLoading(false);
             if (bots.length === 0) {
-                setError('Please sign in');
+                setError(t("authRequired"));
             }
             return;
         }
@@ -23,16 +27,25 @@ export function useBots(interval = 5000) {
             setBots(data);
             setError(null);
         } catch (err: any) {
-            console.error(err);
             // Don't set error on poll failure to avoid flashing if it's transient
             // Only set if we have no data
             if (bots.length === 0) {
-                setError(err.message || 'Failed to fetch bots');
+                if (err instanceof ApiError) {
+                    if (err.code && tApiErrors.has(err.code as any)) {
+                        setError(tApiErrors(err.code as any));
+                        return;
+                    }
+                    if (err.status === 401) {
+                        setError(t("authRequired"));
+                        return;
+                    }
+                }
+                setError(t("fetchBots"));
             }
         } finally {
             setIsLoading(false);
         }
-    }, [bots.length]);
+    }, [bots.length, t, tApiErrors]);
 
     useEffect(() => {
         fetchBots();
@@ -52,18 +65,23 @@ export interface BotRuntime {
 }
 
 export function useBot(id: string, interval = 2000) {
+    const t = useTranslations("errors");
+    const tApiErrors = useTranslations("apiErrors");
+
     const [bot, setBot] = useState<Bot | null>(null);
     const [runtime, setRuntime] = useState<BotRuntime | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [pollingEnabled, setPollingEnabled] = useState(true);
 
     const fetchBot = useCallback(async () => {
-        if (!id) return;
+        if (!id || !pollingEnabled) return;
 
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
         if (!token) {
             setIsLoading(false);
-            if (!bot) setError('Please sign in');
+            if (!bot) setError(t("authRequired"));
+            setPollingEnabled(false);
             return;
         }
 
@@ -76,18 +94,34 @@ export function useBot(id: string, interval = 2000) {
             setRuntime(runtimeData);
             setError(null);
         } catch (err: any) {
-            console.error(err);
-            if (!bot) setError(err.message || 'Failed to fetch bot details');
+            if (!bot) {
+                if (err instanceof ApiError) {
+                    if (err.code && tApiErrors.has(err.code as any)) {
+                        setError(tApiErrors(err.code as any));
+                        if (err.code === 'BOT_NOT_FOUND' || err.code === 'INVALID_TOKEN' || err.code === 'UNAUTHORIZED') {
+                            setPollingEnabled(false);
+                        }
+                        return;
+                    }
+                    if (err.status === 401) {
+                        setError(t("authRequired"));
+                        setPollingEnabled(false);
+                        return;
+                    }
+                }
+                setError(t("fetchBotDetails"));
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [id, bot]);
+    }, [id, bot, pollingEnabled, t, tApiErrors]);
 
     useEffect(() => {
+        if (!pollingEnabled) return;
         fetchBot();
         const timer = setInterval(fetchBot, interval);
         return () => clearInterval(timer);
-    }, [fetchBot, interval]);
+    }, [fetchBot, interval, pollingEnabled]);
 
     return { bot, runtime, isLoading, error, refresh: fetchBot };
 }

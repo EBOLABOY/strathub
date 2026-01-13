@@ -3,20 +3,19 @@
 
 import { Sidebar } from "@/components/Sidebar";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Bot, ArrowLeft, Loader2, Save, AlertCircle, Plus, RefreshCw } from "lucide-react";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useTranslations } from "next-intl";
 
 // Valid V1 GridStrategyConfig
 const DEFAULT_CONFIG = `{
   "trigger": {
-    "gridType": "price",
+    "gridType": "percent",
     "basePriceType": "current",
-    "riseSell": "200",
-    "fallBuy": "200",
-    "priceMin": "20000",
-    "priceMax": "80000"
+    "riseSell": "1",
+    "fallBuy": "1"
   },
   "order": {
     "orderType": "limit"
@@ -25,7 +24,7 @@ const DEFAULT_CONFIG = `{
     "amountMode": "amount",
     "gridSymmetric": true,
     "symmetric": {
-      "orderQuantity": "1"
+      "orderQuantity": "20"
     }
   },
   "position": {
@@ -37,6 +36,16 @@ export default function NewBotPage() {
     useRequireAuth();
 
     const router = useRouter();
+    const t = useTranslations("botNew");
+    const tApiErrors = useTranslations("apiErrors");
+
+    const getApiErrorMessage = (err: unknown) => {
+        if (err instanceof ApiError && err.code && tApiErrors.has(err.code as any)) {
+            return tApiErrors(err.code as any);
+        }
+        return null;
+    };
+
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -60,7 +69,8 @@ export default function NewBotPage() {
                 setAccountId(data[0].id);
             }
         } catch (err) {
-            console.error("Failed to load accounts", err);
+            console.error(err);
+            setError(t("errors.loadAccounts"));
         } finally {
             setIsLoadingAccounts(false);
         }
@@ -70,7 +80,7 @@ export default function NewBotPage() {
         setIsLoadingAccounts(true);
         try {
             const newAccount = await api.accounts.create({
-                name: "Test Account",
+                name: t("testAccountName"),
                 exchange: "binance",
                 apiKey: "mock-key",
                 secret: "mock-secret",
@@ -79,7 +89,7 @@ export default function NewBotPage() {
             await fetchAccounts();
             setAccountId(newAccount.id);
         } catch (err: any) {
-            setError(err.message || "Failed to create test account");
+            setError(getApiErrorMessage(err) ?? t("errors.createTestAccount"));
         } finally {
             setIsLoadingAccounts(false);
         }
@@ -98,7 +108,7 @@ export default function NewBotPage() {
             });
             router.push('/bots');
         } catch (err: any) {
-            setError(err.message || "Failed to create bot");
+            setError(getApiErrorMessage(err) ?? t("errors.createBot"));
         } finally {
             setIsLoading(false);
         }
@@ -113,7 +123,7 @@ export default function NewBotPage() {
                     <button onClick={() => router.push('/bots')} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <h1 className="text-xl font-bold text-slate-800">Create New Bot</h1>
+                    <h1 className="text-xl font-bold text-slate-800">{t("title")}</h1>
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-8">
@@ -128,7 +138,7 @@ export default function NewBotPage() {
 
                             <div className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50 space-y-6">
                                 <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">Exchange Account</label>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">{t("exchangeAccountLabel")}</label>
                                     <div className="flex gap-2">
                                         <div className="relative flex-1">
                                             <select
@@ -137,7 +147,7 @@ export default function NewBotPage() {
                                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all font-mono text-sm appearance-none bg-white"
                                                 required
                                             >
-                                                <option value="" disabled>Select an account...</option>
+                                                <option value="" disabled>{t("selectAccountPlaceholder")}</option>
                                                 {accounts.map(acc => (
                                                     <option key={acc.id} value={acc.id}>{acc.name || acc.id} ({acc.exchange})</option>
                                                 ))}
@@ -153,17 +163,17 @@ export default function NewBotPage() {
                                             onClick={handleCreateTestAccount}
                                             disabled={isLoadingAccounts}
                                             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-medium text-sm transition-colors flex items-center gap-2"
-                                            title="Create a Mock Account for Testing"
+                                            title={t("createMockTitle")}
                                         >
                                             <Plus className="w-4 h-4" />
-                                            Test Acc
+                                            {t("createMockButton")}
                                         </button>
                                         <button
                                             type="button"
                                             onClick={fetchAccounts}
                                             disabled={isLoadingAccounts}
                                             className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
-                                            title="Refresh Accounts"
+                                            title={t("refreshTitle")}
                                         >
                                             <RefreshCw className="w-4 h-4" />
                                         </button>
@@ -171,25 +181,25 @@ export default function NewBotPage() {
                                     {accounts.length === 0 && !isLoadingAccounts && (
                                         <p className="mt-2 text-xs text-amber-500 flex items-center gap-1">
                                             <AlertCircle className="w-3 h-3" />
-                                            No exchange accounts found. Create a test account to proceed.
+                                            {t("noAccounts")}
                                         </p>
                                     )}
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">Symbol</label>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">{t("symbolLabel")}</label>
                                     <input
                                         type="text"
                                         value={symbol}
                                         onChange={(e) => setSymbol(e.target.value)}
                                         className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all font-mono text-sm uppercase"
-                                        placeholder="e.g. BNB/USDT"
+                                        placeholder={t("symbolPlaceholder")}
                                         required
                                     />
                                 </div>
 
                                 <div className="flex-1">
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">Configuration (JSON)</label>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">{t("configLabel")}</label>
                                     <textarea
                                         value={config}
                                         onChange={(e) => setConfig(e.target.value)}
@@ -206,7 +216,7 @@ export default function NewBotPage() {
                                     className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg shadow-slate-900/20 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
                                 >
                                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                    Create Draft Bot
+                                    {t("submit")}
                                 </button>
                             </div>
                         </form>

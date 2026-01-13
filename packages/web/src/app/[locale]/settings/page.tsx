@@ -1,8 +1,10 @@
-"use client";
+import { redirect } from "@/i18n/navigation";
 
-import { redirect } from "next/navigation";
-
-export default function SettingsPage() {
-    // Redirect to accounts sub-page
-    redirect("/settings/accounts");
+export default async function SettingsPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  redirect({ href: "/settings/accounts", locale });
 }

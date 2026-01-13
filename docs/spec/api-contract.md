@@ -36,6 +36,7 @@ interface JwtPayload {
 | `/api/bots` | POST | 创建 Bot | ✅ |
 | `/api/bots` | GET | 列表 | ✅ |
 | `/api/bots/:botId` | GET | 详情 | ✅ |
+| `/api/bots/:botId` | DELETE | 删除（只允许 DRAFT/STOPPED/ERROR） | ✅ |
 | `/api/bots/:botId/config` | PUT | 更新配置 | ✅ |
 | `/api/bots/:botId/preview` | POST | 预览（支持 configOverride） | ✅ |
 | `/api/bots/:botId/start` | POST | 启动 | ✅ |
@@ -53,9 +54,10 @@ interface JwtPayload {
 |------|------|------|------|
 | `/api/accounts` | GET | 列表（仅返回脱敏 DTO，无 credentials） | ✅ |
 | `/api/accounts` | POST | 创建（写入 encryptedCredentials） | ✅ |
+| `/api/accounts/:accountId` | PUT | 更新（name/isTestnet/credentials） | ✅ |
 | `/api/accounts/:accountId` | DELETE | 删除（若有 bots 返回 409） | ✅ |
 
-### Response DTO (GET/POST)
+### Response DTO (GET/POST/PUT)
 ```typescript
 interface AccountDTO {
   id: string;
@@ -108,6 +110,7 @@ V1 **不实现** SSE/WebSocket 推送；需要前端实时性时先使用轮询�
 | `BOT_NOT_FOUND` | 404 | Bot 不存在 |
 | `INVALID_STATE_TRANSITION` | 409 | 状态转移无效 |
 | `INVALID_STATE_FOR_CONFIG_UPDATE` | 409 | 当前状态不允许修改配置 |
+| `INVALID_STATE_FOR_DELETE` | 409 | 当前状态不允许删除 |
 | `BOT_ALREADY_EXISTS` | 409 | 同账户同币对 Bot 已存在 |
 | `INVALID_CONFIG` | 422 | 配置 JSON 解析失败 |
 | `VALIDATION_ERROR` | 422 | Zod 请求参数校验失败 |

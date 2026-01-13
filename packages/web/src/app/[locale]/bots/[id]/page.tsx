@@ -3,19 +3,26 @@
 
 import { Sidebar } from "@/components/Sidebar";
 import { useBot } from "@/lib/hooks";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import {
-    Bot, ArrowLeft, Play, Pause, Square,
+    Bot, ArrowLeft, Play, Pause, Square, Trash2,
     Activity, Clock, AlertTriangle, Loader2, Eye, ShieldCheck, XCircle, CheckCircle
 } from "lucide-react";
 import clsx from 'clsx';
 import { BotStatus } from "@crypto-strategy-hub/shared";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useState } from "react";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useTranslations } from "next-intl";
 
 export default function BotDetailPage() {
     useRequireAuth();
+
+    const t = useTranslations("botDetail");
+    const tStatus = useTranslations("botStatus");
+    const tApiErrors = useTranslations("apiErrors");
+    const tPreviewIssues = useTranslations("previewIssues");
 
     const params = useParams();
     const router = useRouter();
@@ -31,6 +38,29 @@ export default function BotDetailPage() {
     const [previewResult, setPreviewResult] = useState<any>(null);
     const [showPreview, setShowPreview] = useState(false);
 
+    // Delete State
+    const [showDelete, setShowDelete] = useState(false);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+
+    const formatStatus = (status: BotStatus | string) => {
+        return tStatus.has(status as any) ? tStatus(status as any) : String(status);
+    };
+
+    const getApiErrorMessage = (err: unknown) => {
+        if (err instanceof ApiError && err.code && tApiErrors.has(err.code as any)) {
+            return tApiErrors(err.code as any);
+        }
+        return null;
+    };
+
+    const formatIssueMessage = (issue: any) => {
+        const code = issue?.code as string | undefined;
+        if (code && tPreviewIssues.has(code as any)) {
+            return tPreviewIssues(code as any);
+        }
+        return issue?.message ? String(issue.message) : String(code ?? "");
+    };
+
     const handleAction = async (action: 'start' | 'stop' | 'pause' | 'resume') => {
         setActionLoading(action);
         setActionError(null);
@@ -38,7 +68,31 @@ export default function BotDetailPage() {
             await api.bots.control(id, action);
             refresh(); // Poll immediately
         } catch (err: any) {
-            setActionError(err.message || `Failed to ${action} bot`);
+            if (err instanceof ApiError && err.code === 'CONFIG_VALIDATION_ERROR') {
+                try {
+                    setPreviewLoading(true);
+                    const res = await api.bots.preview(id);
+                    setPreviewResult(res);
+                    setShowPreview(true);
+                } catch { }
+                finally {
+                    setPreviewLoading(false);
+                }
+            }
+
+            const apiErrorMessage = getApiErrorMessage(err);
+            if (apiErrorMessage) {
+                setActionError(apiErrorMessage);
+                return;
+            }
+
+            const actionLabel =
+                action === "start" ? t("start") :
+                    action === "pause" ? t("pause") :
+                        action === "resume" ? t("resume") :
+                            t("stop");
+
+            setActionError(t("actions.failed", { action: actionLabel }));
         } finally {
             setActionLoading(null);
         }
@@ -53,9 +107,26 @@ export default function BotDetailPage() {
             setPreviewResult(res);
             setShowPreview(true);
         } catch (err: any) {
-            setActionError(err.message || "Failed to preview bot");
+            const apiErrorMessage = getApiErrorMessage(err);
+            setActionError(apiErrorMessage || t("actions.previewFailed"));
         } finally {
             setPreviewLoading(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        setDeleteLoading(true);
+        setActionError(null);
+
+        try {
+            await api.bots.delete(id);
+            setShowDelete(false);
+            router.push('/bots');
+        } catch (err: any) {
+            const apiErrorMessage = getApiErrorMessage(err);
+            setActionError(apiErrorMessage || t("actions.deleteFailed"));
+        } finally {
+            setDeleteLoading(false);
         }
     };
 
@@ -72,10 +143,10 @@ export default function BotDetailPage() {
             <div className="flex h-screen bg-page items-center justify-center flex-col gap-4">
                 <div className="text-rose-500 flex items-center gap-2">
                     <AlertTriangle className="w-6 h-6" />
-                    <span>{error || 'Bot not found'}</span>
+                    <span>{error || t("notFound")}</span>
                 </div>
                 <button onClick={() => router.push('/bots')} className="text-slate-500 hover:underline">
-                    Back to List
+                    {t("backToList")}
                 </button>
             </div>
         );
@@ -98,7 +169,7 @@ export default function BotDetailPage() {
                             </div>
                             <div>
                                 <h1 className="text-lg font-bold text-slate-800">{bot.symbol}</h1>
-                                <div className="text-xs text-slate-400 font-mono">ID: {bot.id.slice(0, 8)}</div>
+                                <div className="text-xs text-slate-400 font-mono">{t("idPrefix", { id: bot.id.slice(0, 8) })}</div>
                             </div>
                         </div>
 
@@ -117,7 +188,7 @@ export default function BotDetailPage() {
                                         bot.status === BotStatus.ERROR ? "bg-rose-500" :
                                             "bg-slate-400"
                             )} />
-                            {bot.status}
+                            {formatStatus(bot.status)}
                         </div>
                     </div>
 
@@ -138,7 +209,7 @@ export default function BotDetailPage() {
                                 className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-lg text-sm font-bold shadow-sm disabled:opacity-50 transition-all mr-2"
                             >
                                 {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-                                Preview
+                                {t("preview")}
                             </button>
                         )}
 
@@ -150,7 +221,7 @@ export default function BotDetailPage() {
                                 className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
                             >
                                 {actionLoading === 'start' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                                Start
+                                {t("start")}
                             </button>
                         )}
 
@@ -162,7 +233,7 @@ export default function BotDetailPage() {
                                 className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all"
                             >
                                 {actionLoading === 'pause' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pause className="w-4 h-4" />}
-                                Pause
+                                {t("pause")}
                             </button>
                         )}
 
@@ -174,7 +245,7 @@ export default function BotDetailPage() {
                                 className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
                             >
                                 {actionLoading === 'resume' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                                Resume
+                                {t("resume")}
                             </button>
                         )}
 
@@ -186,7 +257,19 @@ export default function BotDetailPage() {
                                 className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-rose-500/20 disabled:opacity-50 transition-all"
                             >
                                 {actionLoading === 'stop' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
-                                Stop
+                                {t("stop")}
+                            </button>
+                        )}
+
+                        {/* Delete */}
+                        {(bot.status === BotStatus.DRAFT || bot.status === BotStatus.STOPPED || bot.status === BotStatus.ERROR) && (
+                            <button
+                                onClick={() => setShowDelete(true)}
+                                disabled={!!actionLoading || previewLoading || deleteLoading}
+                                className="flex items-center gap-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2 rounded-lg text-sm font-bold shadow-sm disabled:opacity-50 transition-all ml-2"
+                            >
+                                {deleteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                {t("delete")}
                             </button>
                         )}
                     </div>
@@ -201,7 +284,7 @@ export default function BotDetailPage() {
                             <div className="p-4 bg-teal-50 border-b border-teal-100 flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-teal-800 font-bold">
                                     <ShieldCheck className="w-5 h-5 text-teal-600" />
-                                    Risk Analysis & Preview
+                                    {t("riskAnalysisTitle")}
                                 </div>
                                 <button onClick={() => setShowPreview(false)} className="text-teal-600 hover:text-teal-800">
                                     <XCircle className="w-5 h-5" />
@@ -211,24 +294,24 @@ export default function BotDetailPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {/* Validations */}
                                     <div>
-                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Health Check</h4>
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">{t("healthCheck")}</h4>
                                         <div className="space-y-2">
                                             {previewResult.issues && previewResult.issues.length > 0 ? (
                                                 previewResult.issues.map((issue: any, i: number) => (
-                                                    <div key={i} className={clsx(
+                                                        <div key={i} className={clsx(
                                                         "flex items-start gap-2 text-sm p-3 rounded-lg border",
                                                         issue.severity === 'ERROR' ? "bg-rose-50 text-rose-700 border-rose-100" :
-                                                            issue.severity === 'WARNING' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                                            issue.severity === 'WARN' ? "bg-amber-50 text-amber-700 border-amber-100" :
                                                                 "bg-slate-50 text-slate-700 border-slate-200"
                                                     )}>
                                                         <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                                        <span>{issue.message}</span>
+                                                        <span>{formatIssueMessage(issue)}</span>
                                                     </div>
                                                 ))
                                             ) : (
                                                 <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg text-sm">
                                                     <CheckCircle className="w-4 h-4" />
-                                                    Configuration valid. No risks detected.
+                                                    {t("previewOk")}
                                                 </div>
                                             )}
                                         </div>
@@ -236,25 +319,25 @@ export default function BotDetailPage() {
 
                                     {/* Estimates */}
                                     <div>
-                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Estimates</h4>
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">{t("estimates")}</h4>
                                         <div className="bg-slate-50 rounded-xl p-4 text-sm space-y-2">
                                             <div className="flex justify-between">
-                                                <span className="text-slate-500">Spread</span>
+                                                <span className="text-slate-500">{t("spread")}</span>
                                                 <span className="font-mono font-bold text-slate-700">{previewResult.estimates?.spreadPercent || '0'}%</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-slate-500">Est. Fee (Roundtrip)</span>
+                                                <span className="text-slate-500">{t("estFee")}</span>
                                                 <span className="font-mono font-bold text-slate-700">{previewResult.estimates?.estimatedFeeQuoteRoundTrip || '0'}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-slate-500">Est. Net Profit</span>
+                                                <span className="text-slate-500">{t("estNetProfit")}</span>
                                                 <span className={clsx("font-mono font-bold", parseFloat(previewResult.estimates?.estimatedNetProfitQuoteRoundTrip || '0') >= 0 ? "text-emerald-600" : "text-rose-600")}>
                                                     {previewResult.estimates?.estimatedNetProfitQuoteRoundTrip || '0'}
                                                 </span>
                                             </div>
                                             <div className="pt-2 border-t border-slate-200 mt-2">
                                                 <div className="flex justify-between">
-                                                    <span className="text-slate-500">Order Count</span>
+                                                    <span className="text-slate-500">{t("orderCount")}</span>
                                                     <span className="font-mono font-bold text-slate-700">{previewResult.orders?.length || 0}</span>
                                                 </div>
                                             </div>
@@ -270,17 +353,17 @@ export default function BotDetailPage() {
                         <div className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50">
                             <div className="flex items-center gap-2 mb-2 text-slate-400 text-sm font-medium">
                                 <Activity className="w-4 h-4" />
-                                Run ID
+                                {t("runId")}
                             </div>
                             <div className="text-lg font-mono font-bold text-slate-700 truncate">
-                                {runtime?.runId ? runtime.runId.slice(0, 8) : 'N/A'}
+                                {runtime?.runId ? runtime.runId.slice(0, 8) : t("none")}
                             </div>
                         </div>
 
                         <div className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50">
                             <div className="flex items-center gap-2 mb-2 text-slate-400 text-sm font-medium">
                                 <Clock className="w-4 h-4" />
-                                Status Version
+                                {t("statusVersion")}
                             </div>
                             <div className="text-lg font-mono font-bold text-slate-700">
                                 v{runtime?.statusVersion ?? 0}
@@ -290,10 +373,10 @@ export default function BotDetailPage() {
                         <div className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50">
                             <div className="flex items-center gap-2 mb-2 text-slate-400 text-sm font-medium">
                                 <AlertTriangle className="w-4 h-4" />
-                                Last Error
+                                {t("lastError")}
                             </div>
                             <div className="text-sm font-medium text-rose-500 line-clamp-2">
-                                {runtime?.lastError || 'None'}
+                                {runtime?.lastError || t("none")}
                             </div>
                         </div>
                     </section>
@@ -301,8 +384,8 @@ export default function BotDetailPage() {
                     {/* Config Preview */}
                     <section className="bg-white rounded-2xl shadow-diffuse border border-slate-50 overflow-hidden">
                         <div className="p-4 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
-                            <h3 className="font-bold text-slate-700 text-sm">Configuration</h3>
-                            <span className="text-xs text-slate-400 font-mono">Revision: {bot.configRevision}</span>
+                            <h3 className="font-bold text-slate-700 text-sm">{t("config")}</h3>
+                            <span className="text-xs text-slate-400 font-mono">{t("revision", { revision: bot.configRevision })}</span>
                         </div>
                         <div className="p-0">
                             <pre className="text-xs font-mono text-slate-600 bg-slate-50 p-6 overflow-x-auto">
@@ -318,6 +401,35 @@ export default function BotDetailPage() {
                     </section>
                 </div>
             </main>
+
+            {showDelete && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+                        <div className="p-6 border-b border-slate-100">
+                            <h2 className="text-lg font-bold text-slate-800">{t("deleteModalTitle")}</h2>
+                            <p className="text-sm text-slate-400 mt-1">{t("deleteModalSubtitle")}</p>
+                        </div>
+
+                        <div className="p-6 flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => setShowDelete(false)}
+                                disabled={deleteLoading}
+                                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors disabled:opacity-50"
+                            >
+                                {t("cancel")}
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                disabled={deleteLoading}
+                                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {deleteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                {t("confirmDelete")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

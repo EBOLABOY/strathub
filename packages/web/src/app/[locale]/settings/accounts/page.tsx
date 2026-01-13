@@ -4,11 +4,12 @@ import { Sidebar } from "@/components/Sidebar";
 import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
 import {
-    Settings, Wallet, Plus, Trash2, Loader2, AlertCircle,
+    Settings, Wallet, Plus, Trash2, Pencil, Loader2, AlertCircle,
     CheckCircle, Shield, AlertTriangle
 } from "lucide-react";
 import clsx from "clsx";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useTranslations } from "next-intl";
 
 interface Account {
     id: string;
@@ -21,14 +22,19 @@ interface Account {
 export default function SettingsAccountsPage() {
     useRequireAuth();
 
+    const t = useTranslations("accounts");
+    const tApiErrors = useTranslations("apiErrors");
+
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Create form state
-    const [showCreate, setShowCreate] = useState(false);
-    const [createLoading, setCreateLoading] = useState(false);
-    const [createError, setCreateError] = useState<string | null>(null);
+    // Create/Edit form state
+    const [formMode, setFormMode] = useState<"create" | "edit">("create");
+    const [formOpen, setFormOpen] = useState(false);
+    const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+    const [formLoading, setFormLoading] = useState(false);
+    const [formError, setFormError] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         name: '',
         exchange: 'binance',
@@ -42,6 +48,40 @@ export default function SettingsAccountsPage() {
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
 
+    const getApiErrorMessage = (err: unknown) => {
+        if (err instanceof ApiError && err.code && tApiErrors.has(err.code as any)) {
+            return tApiErrors(err.code as any);
+        }
+        return null;
+    };
+
+    const openCreate = () => {
+        setFormMode("create");
+        setEditingAccountId(null);
+        setFormError(null);
+        setFormData({ name: '', exchange: 'binance', apiKey: '', secret: '', isTestnet: true });
+        setFormOpen(true);
+    };
+
+    const openEdit = (account: Account) => {
+        setFormMode("edit");
+        setEditingAccountId(account.id);
+        setFormError(null);
+        setFormData({
+            name: account.name,
+            exchange: account.exchange,
+            apiKey: "",
+            secret: "",
+            isTestnet: account.isTestnet,
+        });
+        setFormOpen(true);
+    };
+
+    const closeForm = () => {
+        setFormOpen(false);
+        setFormError(null);
+    };
+
     const fetchAccounts = async () => {
         try {
             setIsLoading(true);
@@ -49,7 +89,7 @@ export default function SettingsAccountsPage() {
             setAccounts(data);
             setError(null);
         } catch (err: any) {
-            setError(err.message || 'Failed to load accounts');
+            setError(getApiErrorMessage(err) ?? t("errors.load"));
         } finally {
             setIsLoading(false);
         }
@@ -59,20 +99,46 @@ export default function SettingsAccountsPage() {
         fetchAccounts();
     }, []);
 
-    const handleCreate = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setCreateLoading(true);
-        setCreateError(null);
+        setFormLoading(true);
+        setFormError(null);
 
         try {
-            await api.accounts.create(formData);
-            setShowCreate(false);
+            if (formMode === "create") {
+                await api.accounts.create(formData);
+            } else {
+                if (!editingAccountId) {
+                    setFormError(t("errors.update"));
+                    return;
+                }
+
+                const apiKey = formData.apiKey.trim();
+                const secret = formData.secret.trim();
+                const updatingCredentials = apiKey.length > 0 || secret.length > 0;
+                if (updatingCredentials && (apiKey.length === 0 || secret.length === 0)) {
+                    setFormError(t("errors.credentialsPair"));
+                    return;
+                }
+
+                await api.accounts.update(editingAccountId, {
+                    name: formData.name,
+                    isTestnet: formData.isTestnet,
+                    ...(updatingCredentials ? { apiKey, secret } : {}),
+                });
+            }
+
+            closeForm();
+            setEditingAccountId(null);
             setFormData({ name: '', exchange: 'binance', apiKey: '', secret: '', isTestnet: true });
-            fetchAccounts();
+            await fetchAccounts();
         } catch (err: any) {
-            setCreateError(err.message || 'Failed to create account');
+            setFormError(
+                getApiErrorMessage(err) ??
+                t(formMode === "create" ? "errors.create" : "errors.update")
+            );
         } finally {
-            setCreateLoading(false);
+            setFormLoading(false);
         }
     };
 
@@ -86,7 +152,7 @@ export default function SettingsAccountsPage() {
             setDeleteTarget(null);
             fetchAccounts();
         } catch (err: any) {
-            setDeleteError(err.message || 'Failed to delete account');
+            setDeleteError(getApiErrorMessage(err) ?? t("errors.delete"));
         } finally {
             setDeleteLoading(false);
         }
@@ -105,17 +171,17 @@ export default function SettingsAccountsPage() {
                                 <Wallet className="w-5 h-5 text-slate-500" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold text-slate-800">Exchange Accounts</h1>
-                                <p className="text-sm text-slate-400">Manage your exchange API connections</p>
+                                <h1 className="text-xl font-bold text-slate-800">{t("title")}</h1>
+                                <p className="text-sm text-slate-400">{t("subtitle")}</p>
                             </div>
                         </div>
 
                         <button
-                            onClick={() => setShowCreate(true)}
+                            onClick={openCreate}
                             className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-teal-500/20 transition-all"
                         >
                             <Plus className="w-4 h-4" />
-                            Add Account
+                            {t("add")}
                         </button>
                     </div>
                 </header>
@@ -125,11 +191,9 @@ export default function SettingsAccountsPage() {
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
                         <Shield className="w-5 h-5 text-amber-600 mt-0.5" />
                         <div>
-                            <h4 className="font-bold text-amber-800 text-sm">V1 Security Notice</h4>
+                            <h4 className="font-bold text-amber-800 text-sm">{t("securityTitle")}</h4>
                             <p className="text-amber-700 text-xs mt-1">
-                                Credentials are stored as plaintext in this version.
-                                <strong> Only use testnet API keys.</strong> Mainnet accounts require encryption
-                                (not yet enabled).
+                                {t("securityBody")}
                             </p>
                         </div>
                     </div>
@@ -149,8 +213,8 @@ export default function SettingsAccountsPage() {
                     ) : accounts.length === 0 ? (
                         <div className="text-center py-12 text-slate-400">
                             <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                            <p>No exchange accounts yet.</p>
-                            <p className="text-sm mt-1">Click "Add Account" to connect your first exchange.</p>
+                            <p>{t("emptyTitle")}</p>
+                            <p className="text-sm mt-1">{t("emptySubtitle")}</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -170,21 +234,30 @@ export default function SettingsAccountsPage() {
                                                 ? "bg-amber-100 text-amber-700"
                                                 : "bg-emerald-100 text-emerald-700"
                                         )}>
-                                            {account.isTestnet ? 'Testnet' : 'Mainnet'}
+                                            {account.isTestnet ? t("network.testnet") : t("network.mainnet")}
                                         </span>
                                     </div>
 
                                     <div className="text-xs text-slate-400 mb-4">
-                                        Created: {new Date(account.createdAt).toLocaleDateString()}
+                                        {t("created", { date: new Date(account.createdAt).toLocaleDateString() })}
                                     </div>
 
-                                    <button
-                                        onClick={() => setDeleteTarget(account)}
-                                        className="w-full flex items-center justify-center gap-2 text-rose-500 hover:bg-rose-50 py-2 rounded-lg text-sm font-medium transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                        Delete
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => openEdit(account)}
+                                            className="flex-1 flex items-center justify-center gap-2 text-slate-600 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-100"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                            {t("edit")}
+                                        </button>
+                                        <button
+                                            onClick={() => setDeleteTarget(account)}
+                                            className="flex-1 flex items-center justify-center gap-2 text-rose-500 hover:bg-rose-50 py-2 rounded-lg text-sm font-medium transition-colors border border-rose-100"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            {t("delete")}
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -192,40 +265,46 @@ export default function SettingsAccountsPage() {
                 </div>
             </main>
 
-            {/* Create Modal */}
-            {showCreate && (
+            {/* Create/Edit Modal */}
+            {formOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
                         <div className="p-6 border-b border-slate-100">
-                            <h2 className="text-lg font-bold text-slate-800">Add Exchange Account</h2>
+                            <h2 className="text-lg font-bold text-slate-800">
+                                {formMode === "create" ? t("createModalTitle") : t("editModalTitle")}
+                            </h2>
                         </div>
 
-                        <form onSubmit={handleCreate} className="p-6 space-y-4">
-                            {createError && (
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                            {formError && (
                                 <div className="bg-rose-50 text-rose-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
                                     <AlertCircle className="w-4 h-4" />
-                                    {createError}
+                                    {formError}
                                 </div>
                             )}
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.name")}</label>
                                 <input
                                     type="text"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder="e.g., My Testnet Account"
+                                    placeholder={t("placeholders.name")}
                                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                                     required
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Exchange</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.exchange")}</label>
                                 <select
                                     value={formData.exchange}
                                     onChange={(e) => setFormData({ ...formData, exchange: e.target.value })}
-                                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                    disabled={formMode === "edit"}
+                                    className={clsx(
+                                        "w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500",
+                                        formMode === "edit" && "bg-slate-50 text-slate-500 cursor-not-allowed"
+                                    )}
                                 >
                                     <option value="binance">Binance</option>
                                     <option value="okx">OKX</option>
@@ -233,26 +312,29 @@ export default function SettingsAccountsPage() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">API Key</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.apiKey")}</label>
                                 <input
                                     type="text"
                                     value={formData.apiKey}
                                     onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                                    placeholder="Enter API key"
+                                    placeholder={t("placeholders.apiKey")}
                                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
-                                    required
+                                    required={formMode === "create"}
                                 />
+                                {formMode === "edit" && (
+                                    <p className="text-xs text-slate-400 mt-1">{t("editCredentialsHint")}</p>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Secret</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.secret")}</label>
                                 <input
                                     type="password"
                                     value={formData.secret}
                                     onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
-                                    placeholder="Enter secret key"
+                                    placeholder={t("placeholders.secret")}
                                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
-                                    required
+                                    required={formMode === "create"}
                                 />
                             </div>
 
@@ -265,26 +347,26 @@ export default function SettingsAccountsPage() {
                                     className="w-4 h-4 text-teal-600"
                                 />
                                 <label htmlFor="isTestnet" className="flex-1">
-                                    <span className="text-sm font-medium text-slate-700">Testnet Account</span>
-                                    <p className="text-xs text-slate-400">Mainnet accounts require encryption (not available in V1)</p>
+                                    <span className="text-sm font-medium text-slate-700">{t("testnetLabel")}</span>
+                                    <p className="text-xs text-slate-400">{t("testnetHint")}</p>
                                 </label>
                             </div>
 
                             <div className="flex gap-3 pt-4">
                                 <button
                                     type="button"
-                                    onClick={() => setShowCreate(false)}
+                                    onClick={closeForm}
                                     className="flex-1 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm font-medium"
                                 >
-                                    Cancel
+                                    {t("cancel")}
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={createLoading}
+                                    disabled={formLoading}
                                     className="flex-1 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
-                                    {createLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    Create
+                                    {formLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    {formMode === "create" ? t("create") : t("update")}
                                 </button>
                             </div>
                         </form>
@@ -302,13 +384,13 @@ export default function SettingsAccountsPage() {
                                     <AlertTriangle className="w-5 h-5 text-rose-600" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-bold text-slate-800">Delete Account</h2>
-                                    <p className="text-sm text-slate-400">This action cannot be undone</p>
+                                    <h2 className="text-lg font-bold text-slate-800">{t("deleteModalTitle")}</h2>
+                                    <p className="text-sm text-slate-400">{t("deleteModalSubtitle")}</p>
                                 </div>
                             </div>
 
                             <p className="text-sm text-slate-600 mb-4">
-                                Are you sure you want to delete <strong>{deleteTarget.name}</strong>?
+                                {t("deleteModalConfirm", { name: deleteTarget.name })}
                             </p>
 
                             {deleteError && (
@@ -323,7 +405,7 @@ export default function SettingsAccountsPage() {
                                     onClick={() => { setDeleteTarget(null); setDeleteError(null); }}
                                     className="flex-1 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm font-medium"
                                 >
-                                    Cancel
+                                    {t("cancel")}
                                 </button>
                                 <button
                                     onClick={handleDelete}
@@ -331,7 +413,7 @@ export default function SettingsAccountsPage() {
                                     className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {deleteLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    Delete
+                                    {t("delete")}
                                 </button>
                             </div>
                         </div>

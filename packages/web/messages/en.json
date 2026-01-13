@@ -1,0 +1,256 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "bots": "Bots",
+    "analytics": "Analytics",
+    "portfolio": "Portfolio",
+    "settings": "Settings"
+  },
+  "sidebar": {
+    "user": "User",
+    "plan": "Pro Plan",
+    "logout": "Log out"
+  },
+  "language": {
+    "label": "Language",
+    "zh": "Chinese",
+    "en": "English"
+  },
+  "meta": {
+    "title": "StrategyHub",
+    "description": "Crypto strategy hub"
+  },
+  "errors": {
+    "authRequired": "Please sign in",
+    "fetchBots": "Failed to fetch bots",
+    "fetchBotDetails": "Failed to fetch bot details",
+    "unknown": "Unknown error"
+  },
+  "apiErrors": {
+    "EMAIL_EXISTS": "Email already exists",
+    "INVALID_CREDENTIALS": "Invalid credentials",
+    "UNAUTHORIZED": "Unauthorized",
+    "INVALID_TOKEN": "Invalid token",
+    "USER_NOT_FOUND": "User not found",
+    "BAD_REQUEST": "Bad request",
+    "BOT_NOT_FOUND": "Bot not found",
+    "INVALID_STATE_TRANSITION": "Invalid state transition",
+    "INVALID_STATE_FOR_CONFIG_UPDATE": "Cannot update config in the current state",
+    "BOT_ALREADY_EXISTS": "Bot already exists for this account and symbol",
+    "INVALID_CONFIG": "Invalid config JSON",
+    "VALIDATION_ERROR": "Validation error",
+    "CONFIG_VALIDATION_ERROR": "Config validation failed",
+    "KILL_SWITCH_LOCKED": "Kill switch is enabled",
+    "CONCURRENT_MODIFICATION": "Concurrent modification, please retry",
+    "EXCHANGE_UNAVAILABLE": "Exchange unavailable",
+    "EXCHANGE_ACCOUNT_NOT_FOUND": "Exchange account not found",
+    "EXCHANGE_ACCOUNT_ALREADY_EXISTS": "Exchange account already exists",
+    "ACCOUNT_HAS_BOTS": "Account has bots and cannot be deleted",
+    "INVALID_STATE_FOR_DELETE": "Cannot delete bot in the current state",
+    "MAINNET_ACCOUNT_FORBIDDEN": "Mainnet accounts are not allowed in this version",
+    "INTERNAL_ERROR": "Internal error"
+  },
+  "previewIssues": {
+    "UNSUPPORTED_BASE_PRICE_TYPE": "Unsupported base price type (use current/manual in V1)",
+    "MISSING_BASE_PRICE": "Base price is required when using manual base price",
+    "INVALID_SIZING_CONFIG": "Sizing config is incomplete",
+    "BALANCE_UNAVAILABLE": "Balance is unavailable (cannot compute percent sizing)",
+    "BELOW_MIN_AMOUNT": "Order amount is below the exchange minimum",
+    "BELOW_MIN_NOTIONAL": "Order notional is below the exchange minimum"
+  },
+  "botStatus": {
+    "DRAFT": "Draft",
+    "WAITING_TRIGGER": "Waiting for trigger",
+    "RUNNING": "Running",
+    "PAUSED": "Paused",
+    "STOPPING": "Stopping",
+    "STOPPED": "Stopped",
+    "ERROR": "Error"
+  },
+  "login": {
+    "title": "Welcome back",
+    "subtitle": "Sign in to {brand}",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign In",
+    "createAccount": "Create Account",
+    "detailedInstructions": "Detailed instructions for Testnet access",
+    "placeholders": {
+      "email": "name@company.com",
+      "password": "At least 8 characters"
+    },
+    "errors": {
+      "emailExists": "Email already exists",
+      "invalidCredentials": "Invalid credentials",
+      "failedConnect": "Failed to connect to server",
+      "emailPasswordRequired": "Email and password are required"
+    }
+  },
+  "dashboard": {
+    "title": "Overview",
+    "modeLabel": "Mode",
+    "modeReal": "Real",
+    "demoBotName": "Grid-{symbol}-{i}",
+    "keyMetricsTitle": "Key Metrics",
+    "lastUpdated": "Last updated: {time}",
+    "justNow": "Just now",
+    "activeBotsTitle": "Active Bots",
+    "viewAll": "View All",
+    "table": {
+      "botName": "Bot Name",
+      "status": "Status",
+      "pnl24h": "PnL (24h)",
+      "action": "Action"
+    },
+    "exchangeLimit": "Binance · Limit",
+    "manage": "Manage"
+  },
+  "kpi": {
+    "totalProfit": "Total Profit",
+    "activeBots": "Active Bots",
+    "winRate": "Win Rate",
+    "volume24h": "24h Volume"
+  },
+  "chart": {
+    "title": "Portfolio Performance",
+    "subtitle": "Net Asset Value (NAV) over time",
+    "periods": {
+      "h1": "1H",
+      "d1": "1D",
+      "w1": "1W",
+      "m1": "1M",
+      "y1": "1Y"
+    }
+  },
+  "topology": {
+    "title": "System Topology",
+    "statusOnline": "System Online",
+    "nodes": {
+      "workers": "Workers",
+      "exchange": "Binance",
+      "database": "Database",
+      "api": "API Gateway"
+    }
+  },
+  "bots": {
+    "title": "My Bots",
+    "create": "Create Bot",
+    "emptyTitle": "No bots found",
+    "emptyCta": "Deploy your first bot",
+    "metrics": {
+      "pnlTotal": "PnL (Total)",
+      "status": "Status",
+      "na": "N/A"
+    },
+    "newCard": "Deploy New Strategy"
+  },
+  "botNew": {
+    "title": "Create New Bot",
+    "exchangeAccountLabel": "Exchange Account",
+    "selectAccountPlaceholder": "Select an account...",
+    "createMockTitle": "Create a Mock Account for Testing",
+    "createMockButton": "Test Acc",
+    "refreshTitle": "Refresh Accounts",
+    "noAccounts": "No exchange accounts found. Create a test account to proceed.",
+    "symbolLabel": "Symbol",
+    "symbolPlaceholder": "e.g. BNB/USDT",
+    "configLabel": "Configuration (JSON)",
+    "submit": "Create Draft Bot",
+    "testAccountName": "Test Account",
+    "errors": {
+      "loadAccounts": "Failed to load accounts",
+      "createTestAccount": "Failed to create test account",
+      "createBot": "Failed to create bot"
+    }
+  },
+  "botDetail": {
+    "notFound": "Bot not found",
+    "backToList": "Back to List",
+    "idPrefix": "ID: {id}",
+    "preview": "Preview",
+    "start": "Start",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "riskAnalysisTitle": "Risk Analysis & Preview",
+    "healthCheck": "Health Check",
+    "previewOk": "Configuration valid. No risks detected.",
+    "estimates": "Estimates",
+    "spread": "Spread",
+    "estFee": "Est. Fee (Roundtrip)",
+    "estNetProfit": "Est. Net Profit",
+    "orderCount": "Order Count",
+    "runId": "Run ID",
+    "statusVersion": "Status Version",
+    "lastError": "Last Error",
+    "none": "None",
+    "config": "Configuration",
+    "revision": "Revision: {revision}",
+    "actions": {
+      "failed": "Failed to {action} bot",
+      "previewFailed": "Failed to preview bot",
+      "deleteFailed": "Failed to delete bot"
+    }
+    ,
+    "delete": "Delete",
+    "deleteModalTitle": "Delete Bot",
+    "deleteModalSubtitle": "This action cannot be undone",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete"
+  },
+  "accounts": {
+    "title": "Exchange Accounts",
+    "subtitle": "Manage your exchange API connections",
+    "add": "Add Account",
+    "securityTitle": "V1 Security Notice",
+    "securityBody": "Credentials are stored as plaintext in this version. Only use testnet API keys. Mainnet accounts require encryption (not yet enabled).",
+    "emptyTitle": "No exchange accounts yet.",
+    "emptySubtitle": "Click \"Add Account\" to connect your first exchange.",
+    "network": {
+      "testnet": "Testnet",
+      "mainnet": "Mainnet"
+    },
+    "created": "Created: {date}",
+    "edit": "Edit",
+    "delete": "Delete",
+    "createModalTitle": "Add Exchange Account",
+    "editModalTitle": "Edit Exchange Account",
+    "fields": {
+      "name": "Name",
+      "exchange": "Exchange",
+      "apiKey": "API Key",
+      "secret": "Secret"
+    },
+    "placeholders": {
+      "name": "e.g., My Testnet Account",
+      "apiKey": "Enter API key",
+      "secret": "Enter secret key"
+    },
+    "editCredentialsHint": "Leave blank to keep current credentials",
+    "testnetLabel": "Testnet Account",
+    "testnetHint": "Mainnet accounts require encryption (not available in V1)",
+    "cancel": "Cancel",
+    "create": "Create",
+    "update": "Update",
+    "deleteModalTitle": "Delete Account",
+    "deleteModalSubtitle": "This action cannot be undone",
+    "deleteModalConfirm": "Are you sure you want to delete {name}?",
+    "errors": {
+      "load": "Failed to load accounts",
+      "create": "Failed to create account",
+      "update": "Failed to update account",
+      "credentialsPair": "API key and secret must be provided together",
+      "delete": "Failed to delete account"
+    }
+  },
+  "analytics": {
+    "title": "Analytics",
+    "comingSoonTitle": "Coming soon",
+    "comingSoonBody": "V1 focuses on API contracts and reliability. Analytics is planned for V2."
+  },
+  "portfolio": {
+    "title": "Portfolio",
+    "comingSoonTitle": "Coming soon",
+    "comingSoonBody": "Portfolio views will land after we wire up real exchange balances."
+  }
+}
