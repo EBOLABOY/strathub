@@ -53,3 +53,48 @@
 ## Testnet Soak（下一步）
 
 - `docs/runbook/testnet-soak.md`
+
+## 可观测性（Observability）
+
+### Prometheus 指标
+
+API 暴露 `/metrics` 端点，返回 Prometheus 格式的指标：
+
+```bash
+curl http://localhost:3001/metrics
+```
+
+关键指标包括：
+- `csh_orders_placed_total` - 下单总数
+- `csh_orders_canceled_total` - 撤单总数
+- `csh_exchange_requests_total` - 交易所 API 请求数
+- `csh_reconcile_duration_seconds` - Reconcile 耗时
+- `csh_risk_triggered_total` - 风控触发次数
+- `csh_worker_tick_duration_seconds` - Worker 循环耗时
+
+### 告警配置
+
+支持多渠道告警推送，在 `.env` 中配置：
+
+```bash
+# Telegram（推荐）
+TELEGRAM_BOT_TOKEN="your-bot-token"
+TELEGRAM_CHAT_ID="your-chat-id"
+
+# Webhook（通用 HTTP POST）
+ALERT_WEBHOOK_URL="https://your-endpoint.com/alerts"
+
+# PushPlus（微信推送）
+PUSHPLUS_TOKEN="your-pushplus-token"
+
+# 节流（同一告警 60 秒内只发一次）
+ALERT_THROTTLE_MS="60000"
+
+# 全局开关
+ALERTS_ENABLED="true"
+```
+
+告警类型：
+- **严重（Critical）**：清仓失败、订单提交失败（达到重试上限）
+- **警告（Warning）**：自动止损触发、余额异常
+- **信息（Info）**：状态变更通知

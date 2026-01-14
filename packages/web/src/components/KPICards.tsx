@@ -1,16 +1,18 @@
 
 "use client";
 
+import { useEffect, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, DollarSign, Activity, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { useTranslations } from "next-intl";
+import { api } from '@/lib/api';
 
 const KPI_DATA = [
     {
         id: 'totalProfit',
-        value: '$12,450.00',
-        trend: '+12.5%',
+        value: 'Loading...',
+        trend: '+12.5%', // Mock for now
         isPositive: true,
         icon: DollarSign,
         color: '#14B8A6', // Teal
@@ -47,10 +49,53 @@ const KPI_DATA = [
 
 export function KPICards() {
     const t = useTranslations("kpi");
+    const [stats, setStats] = useState(KPI_DATA);
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const accounts = await api.accounts.list();
+                if (accounts.length > 0) {
+                    // Fetch balance for the first account
+                    // If user has multiple accounts, ideally we sum them up.
+                    // For MVP, we show the first account's stablecoin balance.
+                    const balances = await api.accounts.getBalance(accounts[0].id);
+
+                    // Simple estimation of total assets in USDT (Sum of stables)
+                    // TODO: Iterate all assets and fetch tickers for accurate Total Value
+                    let totalAssets = 0;
+                    const stables = ['USDT', 'BUSD', 'USDC', 'FDUSD', 'DAI'];
+
+                    Object.entries(balances).forEach(([asset, bal]) => {
+                        // If it's a stablecoin, add to total
+                        if (stables.includes(asset)) {
+                            totalAssets += parseFloat(bal.total);
+                        }
+                        // For now, we ignore non-stables like BNB to avoid fetching price complexity
+                        // unless we want to assume 1 BNB = ... ? No, keep it accurate.
+                        // User will see "Account Amount" -> USDT Balance effectively.
+                    });
+
+                    setStats(prev => {
+                        const next = [...prev];
+                        next[0] = {
+                            ...next[0],
+                            value: `$${totalAssets.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        };
+                        return next;
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to fetch account balance:", error);
+            }
+        };
+
+        loadData();
+    }, []);
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {KPI_DATA.map((kpi) => (
+            {stats.map((kpi) => (
                 <div
                     key={kpi.id}
                     className="bg-white p-6 rounded-2xl shadow-diffuse border border-slate-50 transition-transform duration-300 hover:-translate-y-1 relative overflow-hidden group"

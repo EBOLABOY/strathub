@@ -4,6 +4,8 @@
     "bots": "机器人",
     "analytics": "分析",
     "portfolio": "资产",
+    "config": "配置中心",
+    "templates": "策略模板",
     "settings": "设置"
   },
   "sidebar": {
@@ -75,6 +77,8 @@
     "signIn": "登录",
     "createAccount": "创建账号",
     "detailedInstructions": "测试网接入说明",
+    "registerLink": "注册新账户",
+    "noAccount": "还没有账号？",
     "placeholders": {
       "email": "name@company.com",
       "password": "至少 8 位字符"
@@ -84,6 +88,18 @@
       "invalidCredentials": "邮箱或密码错误",
       "failedConnect": "无法连接到服务器",
       "emailPasswordRequired": "邮箱和密码不能为空"
+    }
+  },
+  "register": {
+    "title": "创建新账户",
+    "subtitle": "开始您的 {brand} 之旅",
+    "email": "邮箱",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "submit": "立即注册",
+    "hasAccount": "已有账户？去登录",
+    "errors": {
+      "passwordsNotMatch": "两次输入的密码不一致"
     }
   },
   "dashboard": {
@@ -106,7 +122,7 @@
     "manage": "管理"
   },
   "kpi": {
-    "totalProfit": "总收益",
+    "totalProfit": "账户总资产",
     "activeBots": "活跃机器人",
     "winRate": "胜率",
     "volume24h": "成交量（24小时）"
@@ -139,9 +155,12 @@
     "emptyCta": "部署你的第一个机器人",
     "metrics": {
       "pnlTotal": "总收益",
+      "pnl24h": "24H收益",
       "status": "状态",
-      "na": "暂无"
+      "na": "暂无",
+      "runtime": "已运行"
     },
+    "viewDetails": "查看详情",
     "newCard": "部署新策略"
   },
   "botNew": {
@@ -156,6 +175,69 @@
     "symbolPlaceholder": "例如：BNB/USDT",
     "configLabel": "配置（JSON）",
     "submit": "创建草稿",
+    "modeLabel": "配置模式",
+    "modeSimple": "简易模式",
+    "modeAdvanced": "高级模式 (JSON)",
+    "form": {
+      "triggerCondition": "触发条件",
+      "priceRange": "网格价格区间",
+      "rise": "上涨",
+      "fall": "下跌",
+      "callbackSell": "回落卖出",
+      "bounceBuy": "反弹买入",
+      "triggerDelta": "回撤幅度 (%)",
+      "symmetricToggle": "对称网格",
+      "asymmetricToggle": "手动设置",
+      "triggerBase": "触发基准价",
+      "currentPrice": "当前价",
+      "manualPrice": "自定义价格",
+      "orderSettings": "委托设置",
+      "orderType": "委托价格",
+      "limitOrder": "限价委托",
+      "marketOrder": "市价委托",
+      "amountType": "委托数量",
+      "byQuantity": "按数量 (Base)",
+      "byAmount": "按金额 (Quote)",
+      "gridSettings": "网格参数",
+      "gridCount": "网格数量",
+      "amountPerGrid": "每格金额 (USDT)",
+      "quantityPerGrid": "每格数量 (COIN)",
+      "maxPosition": "最大持仓",
+      "minPosition": "最小底仓",
+      "advancedSettings": "高级设置",
+      "gridType": "网格类型",
+      "typePercent": "百分比 (%)",
+      "typePrice": "差价 (Abs)",
+      "gridStrategyTitle": "核心策略",
+      "gridStrategySubtitle": "定义网格如何响应市场波动",
+      "triggerLogic": "触发逻辑",
+      "symmetricMode": "对称模式",
+      "manualMode": "独立模式",
+      "sellHigher": "上涨卖出 (高抛)",
+      "buyLower": "下跌买入 (低吸)",
+      "gridStep": "网格步长",
+      "trailingSell": "移动止盈 (回落卖出)",
+      "trailingBuy": "移动抄底 (反弹买入)",
+      "callback": "回调幅度",
+      "rebound": "反弹幅度",
+      "positionMoneyTitle": "资金与仓位",
+      "positionMoneySubtitle": "管理单笔金额与最大持仓",
+      "advancedProtection": "高级风控",
+      "stopLossLabel": "止损价 (下限)",
+      "takeProfitLabel": "止盈价 (上限)",
+      "noStopLoss": "无止损",
+      "noLimit": "无上限",
+      "autoExpiration": "有效期设置",
+      "validityHint": "默认 365 天",
+      "summaryTemplate": "策略将每波动 {step}{unit} 进行交易。",
+      "summaryPullback": "卖出需回调 {percent}%。",
+      "summaryRebound": "买入需反弹 {percent}%。",
+      "monitorHours": "监控时段",
+      "monitorHoursHint": "加密市场通常 24/7，无需设置",
+      "clearOnStop": "清仓设置",
+      "clearOnStopHint": "停止时卖出所有持仓",
+      "summary": "策略将在基准价基础上，上涨 {rise}% 和下跌 {fall}% 的范围内，均匀分布 {count} 个网格。"
+    },
     "testAccountName": "测试账户",
     "errors": {
       "loadAccounts": "加载账户失败",
@@ -195,7 +277,19 @@
     "deleteModalTitle": "删除机器人",
     "deleteModalSubtitle": "此操作无法撤销",
     "cancel": "取消",
-    "confirmDelete": "确认删除"
+    "confirmDelete": "确认删除",
+    "status": "状态",
+    "loadFailed": "加载机器人失败",
+    "backToBots": "返回机器人列表",
+    "realtimeConnected": "实时连接",
+    "pollingMode": "轮询模式",
+    "tradeHistory": "交易历史",
+    "tradeTime": "时间",
+    "tradeSide": "方向",
+    "tradePrice": "价格",
+    "tradeAmount": "数量",
+    "tradeFee": "手续费",
+    "noTrades": "暂无成交记录"
   },
   "accounts": {
     "title": "交易所账户",

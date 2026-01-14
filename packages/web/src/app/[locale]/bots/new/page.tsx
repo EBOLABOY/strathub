@@ -8,14 +8,16 @@ import { api, ApiError } from "@/lib/api";
 import { Bot, ArrowLeft, Loader2, Save, AlertCircle, Plus, RefreshCw } from "lucide-react";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useTranslations } from "next-intl";
+import { GridConfigForm } from "@/components/GridConfigForm";
+import clsx from "clsx";
 
 // Valid V1 GridStrategyConfig
 const DEFAULT_CONFIG = `{
   "trigger": {
     "gridType": "percent",
     "basePriceType": "current",
-    "riseSell": "1",
-    "fallBuy": "1"
+    "riseSell": "0.2",
+    "fallBuy": "0.2"
   },
   "order": {
     "orderType": "limit"
@@ -55,6 +57,7 @@ export default function NewBotPage() {
 
     const [symbol, setSymbol] = useState("BNB/USDT");
     const [config, setConfig] = useState(DEFAULT_CONFIG);
+    const [mode, setMode] = useState<'simple' | 'advanced'>('simple');
 
     useEffect(() => {
         fetchAccounts();
@@ -198,14 +201,43 @@ export default function NewBotPage() {
                                     />
                                 </div>
 
-                                <div className="flex-1">
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">{t("configLabel")}</label>
-                                    <textarea
-                                        value={config}
-                                        onChange={(e) => setConfig(e.target.value)}
-                                        className="w-full h-64 px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all font-mono text-xs leading-relaxed"
-                                        required
-                                    />
+                                <div className="flex-1 border-t border-slate-100 pt-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <label className="block text-sm font-bold text-slate-700">{t("configLabel")}</label>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                                            <button
+                                                type="button"
+                                                onClick={() => setMode('simple')}
+                                                className={clsx(
+                                                    "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                                                    mode === 'simple' ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                                                )}
+                                            >
+                                                {t("modeSimple")}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setMode('advanced')}
+                                                className={clsx(
+                                                    "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                                                    mode === 'advanced' ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                                                )}
+                                            >
+                                                {t("modeAdvanced")}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {mode === 'simple' ? (
+                                        <GridConfigForm configJson={config} onChange={setConfig} />
+                                    ) : (
+                                        <textarea
+                                            value={config}
+                                            onChange={(e) => setConfig(e.target.value)}
+                                            className="w-full h-96 px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all font-mono text-xs leading-relaxed bg-slate-50"
+                                            required
+                                        />
+                                    )}
                                 </div>
                             </div>
 

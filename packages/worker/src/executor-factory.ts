@@ -34,6 +34,7 @@ export function createSimulatorFactory(): ExecutorFactory {
         let context = cache.get(exchangeAccountId);
         if (!context) {
             const simulator = new ExchangeSimulator();
+            seedDefaultBalances(simulator);
             const executor = createSimulatorExecutor(simulator);
             context = { simulator, executor };
             cache.set(exchangeAccountId, context);
@@ -51,6 +52,7 @@ export function createSeededSimulatorFactory(
         let context = cache.get(exchangeAccountId);
         if (!context) {
             const simulator = new ExchangeSimulator();
+            seedDefaultBalances(simulator);
             seedFn(simulator, exchangeAccountId);
             const executor = createSimulatorExecutor(simulator);
             context = { simulator, executor };
@@ -58,6 +60,24 @@ export function createSeededSimulatorFactory(
         }
         return context;
     };
+}
+
+function seedDefaultBalances(simulator: ExchangeSimulator): void {
+    // Dev-friendly defaults: enough funds for common spot pairs.
+    simulator.setBalance('USDT', '100000');
+    simulator.setBalance('USDC', '100000');
+    simulator.setBalance('BUSD', '100000');
+
+    simulator.setBalance('BTC', '10');
+    simulator.setBalance('ETH', '100');
+    simulator.setBalance('BNB', '1000');
+    simulator.setBalance('SOL', '10000');
+    simulator.setBalance('XRP', '100000');
+    simulator.setBalance('ADA', '100000');
+    simulator.setBalance('DOGE', '1000000');
+    simulator.setBalance('DOT', '10000');
+    simulator.setBalance('MATIC', '100000');
+    simulator.setBalance('LTC', '10000');
 }
 
 // ============================================================================

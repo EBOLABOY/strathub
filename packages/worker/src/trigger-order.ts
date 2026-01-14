@@ -17,6 +17,7 @@ import type { GridConfig, PreviewMarketInfo, PreviewResult, TradingExecutor } fr
 import { calculatePreview, checkPriceBounds, generateClientOrderId } from '@crypto-strategy-hub/shared';
 import { Decimal } from 'decimal.js';
 import { classifyRetryableError, computeBackoffMs } from './retry.js';
+import { alertCritical, alertWarning } from './metrics.js';
 
 // ============================================================================
 // Retry Policy (V1)
@@ -195,6 +196,13 @@ async function submitOrderIntent(
 
         submitRetryState.delete(order.id);
         await markBotError(order.botId, `ORDER_SUBMIT_FAILED: ${info.code ?? 'UNKNOWN'}: ${info.message}`);
+
+        // 发送告警：重试耗尽
+        void alertCritical(
+            '订单提交失败',
+            `订单 ${order.clientOrderId} 提交失败，已达最大重试次数: ${info.message}`,
+            { botId: order.botId, symbol: order.symbol }
+        );
     }
 }
 

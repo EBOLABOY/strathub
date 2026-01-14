@@ -4,6 +4,7 @@
  * 生产接口，simulator/binance 都是实现
  * 测试专用钩子请用 TestableExecutor
  */
+import { Balance } from './types.js';
 
 // ============================================================================
 // 基础类型
@@ -55,6 +56,8 @@ export interface CreateOrderResult {
     status: string;
 }
 
+
+
 // ============================================================================
 // TradingExecutor（生产接口）
 // ============================================================================
@@ -79,6 +82,9 @@ export interface TradingExecutor {
 
     /** 创建订单 */
     createOrder(params: CreateOrderParams): Promise<CreateOrderResult>;
+
+    /** 获取账户余额 (Map<Asset, Balance>) */
+    fetchBalance(): Promise<Record<string, Balance>>;
 }
 
 // ============================================================================

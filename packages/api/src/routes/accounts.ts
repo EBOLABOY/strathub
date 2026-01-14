@@ -10,7 +10,8 @@ import { z } from 'zod';
 import { prisma, Prisma } from '@crypto-strategy-hub/database';
 import { createApiError } from '../middleware/error-handler.js';
 import { authGuard, requireUserId } from '../middleware/auth-guard.js';
-import { encryptCredentials, isEncryptionEnabled } from '@crypto-strategy-hub/security';
+import { encryptCredentials, decryptCredentials, isEncryptionEnabled } from '@crypto-strategy-hub/security';
+import { createBinanceExecutor } from '@crypto-strategy-hub/exchange';
 
 export const accountsRouter = Router();
 
@@ -267,6 +268,54 @@ accountsRouter.delete('/:accountId', async (req: Request, res: Response, next: N
         });
 
         res.status(204).send();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/accounts/:accountId/balance - Get account balance
+accountsRouter.get('/:accountId/balance', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = requireUserId(req);
+        const { accountId } = req.params;
+
+        const account = await prisma.exchangeAccount.findFirst({
+            where: { id: accountId, userId },
+        });
+
+        if (!account) {
+            throw createApiError('Account not found', 404, 'EXCHANGE_ACCOUNT_NOT_FOUND');
+        }
+
+        let apiKey = '';
+        let secret = '';
+
+        if (account.encryptedCredentials) {
+            try {
+                const plain = JSON.parse(account.encryptedCredentials);
+                apiKey = plain.apiKey;
+                secret = plain.secret;
+            } catch {
+                const json = decryptCredentials(account.encryptedCredentials);
+                const creds = JSON.parse(json);
+                apiKey = creds.apiKey;
+                secret = creds.secret;
+            }
+        }
+
+        if (!apiKey || !secret) {
+            throw createApiError('Invalid credentials', 500, 'INVALID_CREDENTIALS');
+        }
+
+        const executor = createBinanceExecutor({
+            apiKey,
+            secret,
+            isTestnet: account.isTestnet,
+            allowMainnet: !account.isTestnet
+        });
+
+        const balance = await executor.fetchBalance();
+        res.json(balance);
     } catch (error) {
         next(error);
     }

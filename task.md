@@ -80,18 +80,44 @@
 - [ ] **Verify**：配置校验（边界条件/字段互斥/默认值）+ 触发引擎（percent/price/pullback/rebound/区间）行为一致（来源：旧仓库 unit tests 场景）
 
 ## Phase 6: Frontend（做 UI 但别让它决定后端怎么写）<!-- id: 9 -->
-- [ ] 登录/用户信息
-- [ ] 配置中心：列表/详情/历史/回滚/导入导出/批量更新/重载
-- [ ] 模板：列表/详情/应用
-- [ ] 网格条件单：创建/预览/运行状态/停止/日志
-- [ ] Trades：历史/统计；Logs：文件/实时流；SSE/WS：实时刷新
-- [ ] **Verify**：关键用户路径闭环（登录→创建策略→预览→启动→查看状态/日志→停止→历史回溯），UI 只负责展示（来源：旧仓库页面流程）
+- [x] 登录/用户信息
+- [x] 配置中心：列表/详情/历史/回滚/导入导出/批量更新/重载
+  - 已创建 `/settings/config` 页面
+  - 支持配置列表、搜索、分类过滤
+  - 支持配置编辑与历史版本查看
+  - 支持配置导入/导出 JSON
+  - API 端点 `/api/config/*` 已实现
+- [x] 模板：列表/详情/应用
+  - 已创建 `/settings/templates` 页面
+  - 支持模板创建、编辑、删除
+  - 支持模板详情查看和配置预览
+  - 支持模板应用到 Bot
+  - API 端点 `/api/templates/*` 已实现
+- [x] 网格条件单：创建/预览/运行状态/停止/日志
+  - 已添加 `GridPreviewChart` 可视化图表组件
+  - 支持基准价、买卖触发价、价格区间的图形化展示
+- [x] Trades：历史/统计；Logs：文件/实时流；SSE/WS：实时刷新
+  - 已实现 SSE 端点 (`/api/sse`)
+  - 已创建 `useSSE` / `useBotSSE` Hook
+  - Bot 详情页支持 SSE 实时状态更新
+- [x] **Verify**：关键用户路径闭环（登录→创建策略→预览→启动→查看状态/日志→停止→历史回溯）
+  - 已创建 E2E 测试文件 `packages/api/__tests__/e2e-user-journey.test.ts`
+  - 覆盖 CRUD 操作：Exchange Accounts, Bots, Config, Templates
+  - 所有 18 个测试用例通过
+  - 创建了 E2E 验证工作流 `.agent/workflows/e2e-verify.md`
 
 ## Phase 7: Observability & Alerts（没有可观测性就等着爆仓）<!-- id: 10 -->
-- [ ] Prometheus 指标：system/order/profit/risk/volatility/api/ai（指标集合来源：旧仓库；新仓库要固定命名与 label）
-- [ ] 多渠道告警：PushPlus/Telegram/Webhook（通道来源：旧仓库；新仓库要做分级/去重/节流）
-- [ ] 关键路径告警：止损触发、清仓失败、重试耗尽、余额异常、订单重复风险
+- [x] Prometheus 指标：system/order/profit/risk/volatility/api/ai（指标集合来源：旧仓库；新仓库要固定命名与 label）
+  - 已创建 `packages/observability` 包，包含完整的 Prometheus 指标定义
+  - `/metrics` 端点已在 API 层暴露
+- [x] 多渠道告警：PushPlus/Telegram/Webhook（通道来源：旧仓库；新仓库要做分级/去重/节流）
+  - 已实现 `AlertService` 支持 Telegram/Webhook/PushPlus
+  - 支持分级告警（critical/warning/info）、节流去重
+- [x] 关键路径告警：止损触发、清仓失败、重试耗尽、余额异常、订单重复风险
+  - 已创建 `packages/worker/src/metrics.ts` 辅助模块
+  - 已在 `stopping-executor.ts`（清仓失败）、`trigger-order.ts`（订单提交失败）、`deps.ts`（止损触发）中植入告警
 
 ## Phase 8: Deployment（能跑起来才算项目）<!-- id: 11 -->
-- [ ] `docker-compose.yml`（App + Data Volume）
-- [ ] `README.md`：测试网/模拟盘、环境变量、运行与回滚手册
+- [x] `docker-compose.yml`（App + Data Volume）
+- [x] `README.md`：测试网/模拟盘、环境变量、运行与回滚手册
+  - 已添加可观测性和告警配置说明

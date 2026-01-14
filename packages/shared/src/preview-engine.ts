@@ -125,8 +125,49 @@ const DEFAULT_FEE_RATE = '0.001';
 // Helper: Decimal 规范化
 // ============================================================================
 
+const DEFAULT_DECIMALS = 8;
+const MAX_DECIMALS = 18;
+
+function clampInt(value: number, min: number, max: number): number {
+    if (!Number.isFinite(value)) return min;
+    const n = Math.trunc(value);
+    return Math.min(max, Math.max(min, n));
+}
+
+function precisionToDecimals(precision: number): number {
+    if (!Number.isFinite(precision)) return DEFAULT_DECIMALS;
+
+    // Most exchanges use decimal places (integer). Keep that fast path.
+    if (Number.isInteger(precision)) {
+        return clampInt(precision, 0, MAX_DECIMALS);
+    }
+
+    // Some feeds/providers return tick size (e.g. 0.01) instead of decimal places.
+    // Decimal.js toFixed() requires an integer, so convert tick-size → decimal places.
+    if (precision <= 0) return DEFAULT_DECIMALS;
+    if (precision >= 1) return 0;
+
+    const raw = String(precision).toLowerCase();
+    const expIdx = raw.indexOf('e-');
+    if (expIdx >= 0) {
+        const exp = Number.parseInt(raw.slice(expIdx + 2), 10);
+        const coeff = raw.slice(0, expIdx);
+        const extra = coeff.includes('.') ? (coeff.split('.')[1]?.length ?? 0) : 0;
+        if (Number.isFinite(exp) && exp > 0) {
+            return clampInt(exp + extra, 0, MAX_DECIMALS);
+        }
+    }
+
+    const dotIdx = raw.indexOf('.');
+    if (dotIdx >= 0) {
+        return clampInt(raw.length - dotIdx - 1, 0, MAX_DECIMALS);
+    }
+
+    return DEFAULT_DECIMALS;
+}
+
 function normalizeDecimal(value: Decimal, precision: number): string {
-    return value.toFixed(precision);
+    return value.toFixed(precisionToDecimals(precision));
 }
 
 function parseDecimalSafe(value: string | undefined, fallback: string = '0'): Decimal {

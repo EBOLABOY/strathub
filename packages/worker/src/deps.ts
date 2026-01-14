@@ -11,6 +11,7 @@ import { prisma, Prisma } from '@crypto-strategy-hub/database';
 import { checkAutoClose, parseAutoCloseConfig } from '@crypto-strategy-hub/shared';
 import { getProviderFactory as getMarketDataProviderFactory } from '@crypto-strategy-hub/market-data';
 import type { WorkerDeps, MarketDataProvider, AutoCloseResult } from './worker.js';
+import { alertWarning, recordRiskTriggered } from './metrics.js';
 
 // ============================================================================
 // checkAndTrigger 实现（复用 shared 的纯函数 + prisma 写入）
@@ -108,6 +109,14 @@ async function checkAndTriggerAutoCloseImpl(
 
         throw error;
     }
+
+    // 记录指标和发送告警
+    recordRiskTriggered('auto_close');
+    void alertWarning(
+        '自动止损触发',
+        `Bot 触发自动止损，回撤 ${decision.drawdownPercent}%`,
+        { botId }
+    );
 
     return { triggered: true, previouslyTriggered: false, newStatus: 'STOPPING' };
 }

@@ -6,6 +6,13 @@ const npmCmd = 'npm';
 const isWindows = process.platform === 'win32';
 const useShell = isWindows;
 
+function mergeNodeOptions(existing, extra) {
+  const current = (existing ?? '').trim();
+  if (!current) return extra;
+  if (current.includes(extra)) return current;
+  return `${current} ${extra}`;
+}
+
 function spawnNpm(args, options = {}) {
   return spawn(npmCmd, args, {
     stdio: 'inherit',
@@ -19,6 +26,28 @@ function spawnCmd(command, args, options = {}) {
     stdio: 'inherit',
     shell: isWindows,
     ...options,
+  });
+}
+
+function runCmd(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawnCmd(command, args, options);
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (code === 0) return resolve(undefined);
+      reject(new Error(`Command failed: ${command} ${args.join(' ')} (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
+    });
+  });
+}
+
+function runNpm(args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawnNpm(args, options);
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (code === 0) return resolve(undefined);
+      reject(new Error(`Command failed: npm ${args.join(' ')} (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
+    });
   });
 }
 
@@ -57,27 +86,38 @@ const databaseUrl = process.env.DATABASE_URL ?? envLocal.DATABASE_URL;
 const apiPort = process.env.API_PORT ?? envLocal.API_PORT ?? '3001';
 const webPort = process.env.WEB_PORT ?? envLocal.WEB_PORT ?? '3000';
 const jwtSecret = process.env.JWT_SECRET ?? envLocal.JWT_SECRET ?? 'dev-secret-change-me';
+const exchangeProvider = process.env.EXCHANGE_PROVIDER ?? envLocal.EXCHANGE_PROVIDER ?? 'sim';
+
+console.log('[dev] Building local workspace packages...');
+
+// Build shared libs that are imported by api/worker via "dist" exports.
+// Keep this list short to avoid dev startup turning into a full production build.
+await runNpm(['-w', 'packages/shared', 'run', 'build']);
+await runNpm(['-w', 'packages/security', 'run', 'build']);
+await runNpm(['-w', 'packages/database', 'run', 'build']);
+await runNpm(['-w', 'packages/exchange-simulator', 'run', 'build']);
+await runNpm(['-w', 'packages/market-data', 'run', 'build']);
+await runNpm(['-w', 'packages/exchange', 'run', 'build']);
 
 console.log('[dev] Bootstrapping local DB schema...');
+
+const traceDeprecations = (process.env.TRACE_DEPRECATIONS ?? envLocal.TRACE_DEPRECATIONS ?? '').trim().toLowerCase();
+const enableTraceDeprecations = traceDeprecations === '1' || traceDeprecations === 'true' || traceDeprecations === 'yes';
+const nodeOptionExtra = enableTraceDeprecations ? '--trace-deprecation' : '--disable-warning=DEP0060';
+const userNodeOptions = envLocal.NODE_OPTIONS ?? process.env.NODE_OPTIONS;
 
 const baseEnv = {
   ...process.env,
   ...envLocal,
+  NODE_OPTIONS: mergeNodeOptions(userNodeOptions, nodeOptionExtra),
 };
 
-await new Promise((resolve, reject) => {
-  const child = spawnCmd('npx', ['prisma', 'db', 'push', '--skip-generate'], {
-    cwd: path.join(process.cwd(), 'packages', 'database'),
-    env: {
-      ...baseEnv,
-      ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
-    },
-  });
-  child.on('error', reject);
-  child.on('exit', (code, signal) => {
-    if (code === 0) return resolve(undefined);
-    reject(new Error(`Command failed: npx prisma db push --skip-generate (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
-  });
+await runCmd('npx', ['prisma', 'db', 'push', '--skip-generate'], {
+  cwd: path.join(process.cwd(), 'packages', 'database'),
+  env: {
+    ...baseEnv,
+    ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+  },
 });
 
 console.log(`[dev] Starting API on :${apiPort}, Web on :${webPort}`);
@@ -134,6 +174,7 @@ process.on('SIGTERM', () => shutdown(0));
 startChild('api', ['-w', 'packages/api', 'run', 'dev'], {
   PORT: apiPort,
   JWT_SECRET: jwtSecret,
+  EXCHANGE_PROVIDER: exchangeProvider,
 });
 
 startChild('worker', ['-w', 'packages/worker', 'run', 'dev'], {
@@ -141,7 +182,7 @@ startChild('worker', ['-w', 'packages/worker', 'run', 'dev'], {
   WORKER_ENABLE_TRADING: process.env.WORKER_ENABLE_TRADING ?? envLocal.WORKER_ENABLE_TRADING ?? 'true',
   WORKER_ENABLE_STOPPING: process.env.WORKER_ENABLE_STOPPING ?? envLocal.WORKER_ENABLE_STOPPING ?? 'true',
   WORKER_USE_REAL_EXCHANGE: process.env.WORKER_USE_REAL_EXCHANGE ?? envLocal.WORKER_USE_REAL_EXCHANGE ?? 'false',
-  EXCHANGE_PROVIDER: process.env.EXCHANGE_PROVIDER ?? envLocal.EXCHANGE_PROVIDER ?? 'mock',
+  EXCHANGE_PROVIDER: exchangeProvider,
   ALLOW_MAINNET_TRADING: process.env.ALLOW_MAINNET_TRADING ?? envLocal.ALLOW_MAINNET_TRADING ?? 'false',
 });
 

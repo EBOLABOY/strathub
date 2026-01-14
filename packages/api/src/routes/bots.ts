@@ -380,6 +380,33 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
         }
     });
 
+    // GET /api/bots/:botId/trades - 交易历史
+    router.get('/:botId/trades', async (req, res, next) => {
+        try {
+            const userId = requireUserId(req);
+            const { botId } = req.params;
+            const limit = Math.min(parseInt(req.query['limit'] as string) || 50, 100);
+
+            const bot = await prisma.bot.findFirst({
+                where: { id: botId, userId },
+            });
+
+            if (!bot) {
+                throw createApiError('Bot not found', 404, 'BOT_NOT_FOUND');
+            }
+
+            const trades = await prisma.trade.findMany({
+                where: { botId },
+                orderBy: { timestamp: 'desc' },
+                take: limit,
+            });
+
+            res.json(trades);
+        } catch (error) {
+            next(error);
+        }
+    });
+
     // POST /api/bots/:botId/risk-check - AutoClose 检查（ACC-RISK-002）
     router.post('/:botId/risk-check', async (req, res, next) => {
         try {

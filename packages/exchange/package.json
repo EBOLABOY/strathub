@@ -14,7 +14,8 @@
         "@crypto-strategy-hub/shared": "*",
         "ccxt": "^4.1.100",
         "decimal.js": "^10.4.3",
-        "dotenv": "^17.2.3"
+        "dotenv": "^17.2.3",
+        "socks-proxy-agent": "^8.0.5"
     },
     "devDependencies": {
         "@types/node": "^20.11.0",

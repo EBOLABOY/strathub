@@ -15,6 +15,7 @@
     "dependencies": {
         "@crypto-strategy-hub/database": "*",
         "@crypto-strategy-hub/market-data": "*",
+        "@crypto-strategy-hub/observability": "*",
         "@crypto-strategy-hub/security": "*",
         "@crypto-strategy-hub/shared": "*",
         "bcryptjs": "^2.4.3",

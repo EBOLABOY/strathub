@@ -14,6 +14,7 @@ import type {
     TradeRecord,
     CreateOrderParams,
     CreateOrderResult,
+    Balance,
 } from '@crypto-strategy-hub/shared';
 import { ORDER_PREFIX } from '@crypto-strategy-hub/shared';
 
@@ -28,6 +29,15 @@ export type TriggerExecutor = TestableExecutor;
 // ============================================================================
 // SimulatorExecutor
 // ============================================================================
+
+// Helper to map simulator status to standard status
+function mapStatus(s: string): string {
+    const upper = s.toUpperCase();
+    if (upper === 'OPEN') return 'NEW';
+    if (upper === 'CLOSED') return 'FILLED';
+    if (upper === 'CANCELED' || upper === 'CANCELLED') return 'CANCELED';
+    return upper;
+}
 
 export function createSimulatorExecutor(
     simulator: ExchangeSimulator
@@ -59,7 +69,7 @@ export function createSimulatorExecutor(
                     price: o.price ?? '0',
                     amount: o.amount,
                     filledAmount: o.filledAmount,
-                    status: o.status,
+                    status: mapStatus(o.status),
                 }));
         },
 
@@ -98,8 +108,28 @@ export function createSimulatorExecutor(
             return {
                 exchangeOrderId: result.exchangeOrderId,
                 clientOrderId: result.clientOrderId,
-                status: result.status,
+                status: mapStatus(result.status),
             };
+        },
+
+        async fetchBalance(): Promise<Record<string, Balance>> {
+            const raw = await simulator.fetchBalance();
+            const result: Record<string, Balance> = {};
+
+            for (const [asset, bal] of raw.entries()) {
+                const free = parseFloat(bal.free);
+                const locked = parseFloat(bal.locked);
+                const total = free + locked;
+
+                if (total > 0) {
+                    result[asset] = {
+                        free: bal.free,
+                        locked: bal.locked,
+                        total: total.toFixed(8)
+                    };
+                }
+            }
+            return result;
         },
 
         getCreateOrderCallCount(): number {

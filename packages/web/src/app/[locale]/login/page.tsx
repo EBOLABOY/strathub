@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "@/i18n/navigation";
+import { useRouter, Link } from "@/i18n/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Bot, Loader2, AlertCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -46,110 +46,96 @@ export default function LoginPage() {
         }
     };
 
-    const handleCreateAccount = async () => {
-        setIsLoading(true);
-        setError(null);
-
-        if (!email || !password) {
-            setError(t("errors.emailPasswordRequired"));
-            setIsLoading(false);
-            return;
-        }
-
-        try {
-            try {
-                await api.auth.register(email, password);
-            } catch (err: any) {
-                if (!(err instanceof ApiError) || err.code !== "EMAIL_EXISTS") {
-                    throw err;
-                }
-            }
-
-            const { token } = await api.auth.login(email, password);
-            finishLogin(token);
-        } catch (err: any) {
-            setError(getApiErrorMessage(err) ?? t("errors.failedConnect"));
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     return (
-        <div className="min-h-screen flex items-center justify-center bg-page">
-            <div className="bg-white p-8 rounded-2xl shadow-diffuse border border-slate-50 w-full max-w-md">
-                <div className="flex flex-col items-center mb-8">
-                    <div className="w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center mb-3 shadow-lg shadow-teal-500/20">
-                        <Bot className="w-7 h-7 text-white" />
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden font-sans">
+            {/* Ambient Background Effects */}
+            <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-teal-500/20 rounded-full blur-[120px] pointer-events-none mix-blend-screen opacity-50" />
+            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none mix-blend-screen opacity-50" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-slate-900/50 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col items-center w-full max-w-sm px-4 relative z-10">
+                {/* Logo & Header */}
+                <div className="flex flex-col items-center mb-10 text-center animate-in fade-in slide-in-from-top-4 duration-700">
+                    <div className="w-16 h-16 bg-gradient-to-tr from-teal-400 to-cyan-500 rounded-2xl flex items-center justify-center mb-6 shadow-2xl shadow-teal-500/20 ring-1 ring-white/20">
+                        <Bot className="w-8 h-8 text-white" />
                     </div>
-                    <h1 className="text-xl font-bold text-slate-800">{t("title")}</h1>
-                    <p className="text-sm text-slate-400">{t("subtitle", { brand: tMeta("title") })}</p>
+                    <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">{t("title")}</h1>
+                    <p className="text-slate-400 text-sm font-medium">{t("subtitle", { brand: tMeta("title") })}</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-4">
-                    {error && (
-                        <div className="p-3 bg-rose-50 border border-rose-100 rounded-lg flex items-center gap-2 text-sm text-rose-600">
-                            <AlertCircle className="w-4 h-4" />
-                            {error}
-                        </div>
-                    )}
+                {/* Glass Card */}
+                <div className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-1 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
+                    <div className="bg-slate-950/50 rounded-[20px] p-7 border border-white/5">
+                        <form onSubmit={handleLogin} className="space-y-5">
+                            {error && (
+                                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-sm text-rose-400 font-medium animate-in fade-in zoom-in-95">
+                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                    {error}
+                                </div>
+                            )}
 
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
-                            {t("email")}
-                        </label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all text-sm font-medium text-slate-700 bg-slate-50 focus:bg-white"
-                            placeholder={t("placeholders.email")}
-                            autoComplete="email"
-                            required
-                        />
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider ml-1">
+                                        {t("email")}
+                                    </label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 focus:bg-white/10 focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10 outline-none transition-all text-sm font-medium text-white placeholder:text-slate-600"
+                                        placeholder={t("placeholders.email") || "name@example.com"}
+                                        autoComplete="email"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider ml-1">
+                                        {t("password")}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 focus:bg-white/10 focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10 outline-none transition-all text-sm font-medium text-white placeholder:text-slate-600"
+                                        placeholder={t("placeholders.password")}
+                                        autoComplete="current-password"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2">
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed transform hover:-translate-y-0.5"
+                                >
+                                    {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : t("signIn")}
+                                </button>
+                            </div>
+
+                            <div className="text-center pt-2">
+                                <span className="text-slate-500 text-sm">{t("noAccount")} </span>
+                                <Link href="/register" className="text-teal-500 hover:text-teal-400 font-bold text-sm transition-colors ml-1">
+                                    {t("registerLink")}
+                                </Link>
+                            </div>
+
+                            <div className="text-center pt-2 border-t border-white/5 mt-4">
+                                <a href="#" className="text-xs font-medium text-slate-600 hover:text-slate-500 transition-colors">
+                                    {t("detailedInstructions")}
+                                </a>
+                            </div>
+                        </form>
                     </div>
+                </div>
 
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
-                            {t("password")}
-                        </label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all text-sm font-medium text-slate-700 bg-slate-50 focus:bg-white"
-                            placeholder={t("placeholders.password")}
-                            autoComplete="current-password"
-                            required
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
-                    >
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("signIn")}
-                    </button>
-
-                    <button
-                        type="button"
-                        disabled={isLoading}
-                        onClick={handleCreateAccount}
-                        className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition-all border border-slate-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                        {isLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            t("createAccount")
-                        )}
-                    </button>
-
-                    <div className="text-center mt-4">
-                        <a href="#" className="text-xs font-medium text-teal-600 hover:text-teal-700">
-                            {t("detailedInstructions")}
-                        </a>
-                    </div>
-                </form>
+                {/* Footer copyright or discreet text */}
+                <div className="mt-8 text-xs text-slate-600 font-medium">
+                    &copy; 2026 {tMeta("title")} Inc.
+                </div>
             </div>
         </div>
     );

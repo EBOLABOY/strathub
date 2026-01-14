@@ -1,5 +1,5 @@
 
-import { Bot, BotStatus, GridConfig, PreviewResult } from "@crypto-strategy-hub/shared";
+import { Bot, BotStatus, GridConfig, PreviewResult, Balance } from "@crypto-strategy-hub/shared";
 
 const API_BASE = '/api';
 
@@ -89,6 +89,10 @@ export const api = {
                 throw new ApiError(errorData.error || 'Failed to delete', res.status, errorData.code);
             }
             // 204 No Content
+        },
+        async getBalance(id: string) {
+            const res = await fetch(`${API_BASE}/accounts/${id}/balance`, { headers: getHeaders() });
+            return handleResponse<Record<string, Balance>>(res);
         }
     },
     bots: {
@@ -151,6 +155,180 @@ export const api = {
                 headers: getHeaders(),
             });
             return handleResponse<Bot>(res);
+        },
+        async getOrders(id: string, page = 1, limit = 20) {
+            const res = await fetch(`${API_BASE}/bots/${id}/orders?page=${page}&limit=${limit}`, { headers: getHeaders() });
+            return handleResponse<{ orders: any[]; total: number }>(res);
+        },
+        async getTrades(id: string, page = 1, limit = 20) {
+            const res = await fetch(`${API_BASE}/bots/${id}/trades?page=${page}&limit=${limit}`, { headers: getHeaders() });
+            return handleResponse<{ trades: any[]; total: number }>(res);
+        }
+    },
+    config: {
+        async list() {
+            const res = await fetch(`${API_BASE}/config`, { headers: getHeaders() });
+            return handleResponse<ConfigItem[]>(res);
+        },
+        async get(key: string) {
+            const res = await fetch(`${API_BASE}/config/${key}`, { headers: getHeaders() });
+            return handleResponse<ConfigItem>(res);
+        },
+        async update(key: string, value: string, description?: string) {
+            const res = await fetch(`${API_BASE}/config/${key}`, {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify({ value, description }),
+            });
+            return handleResponse<ConfigItem>(res);
+        },
+        async batchUpdate(items: { key: string; value: string }[]) {
+            const res = await fetch(`${API_BASE}/config/batch`, {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify({ items }),
+            });
+            return handleResponse<{ updated: number }>(res);
+        },
+        async getHistory(key: string) {
+            const res = await fetch(`${API_BASE}/config/${key}/history`, { headers: getHeaders() });
+            return handleResponse<ConfigHistory[]>(res);
+        },
+        async rollback(key: string, historyId: string) {
+            const res = await fetch(`${API_BASE}/config/${key}/rollback`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ historyId }),
+            });
+            return handleResponse<ConfigItem>(res);
+        },
+        async export() {
+            const res = await fetch(`${API_BASE}/config/export`, { headers: getHeaders() });
+            return handleResponse<{ configs: ConfigItem[] }>(res);
+        },
+        async import(configs: { key: string; value: string; description?: string }[]) {
+            const res = await fetch(`${API_BASE}/config/import`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ configs }),
+            });
+            return handleResponse<{ imported: number }>(res);
+        }
+    },
+    templates: {
+        async list() {
+            const res = await fetch(`${API_BASE}/templates`, { headers: getHeaders() });
+            return handleResponse<ConfigTemplate[]>(res);
+        },
+        async get(id: string) {
+            const res = await fetch(`${API_BASE}/templates/${id}`, { headers: getHeaders() });
+            return handleResponse<ConfigTemplate>(res);
+        },
+        async create(data: { name: string; description?: string; configJson: string }) {
+            const res = await fetch(`${API_BASE}/templates`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify(data),
+            });
+            return handleResponse<ConfigTemplate>(res);
+        },
+        async update(id: string, data: { name?: string; description?: string; configJson?: string }) {
+            const res = await fetch(`${API_BASE}/templates/${id}`, {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify(data),
+            });
+            return handleResponse<ConfigTemplate>(res);
+        },
+        async delete(id: string) {
+            const res = await fetch(`${API_BASE}/templates/${id}`, {
+                method: 'DELETE',
+                headers: getHeaders(),
+            });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: res.statusText, code: 'UNKNOWN' }));
+                throw new ApiError(errorData.error || 'Failed to delete', res.status, errorData.code);
+            }
+        },
+        async apply(templateId: string, botId: string) {
+            const res = await fetch(`${API_BASE}/templates/${templateId}/apply`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ botId }),
+            });
+            return handleResponse<Bot>(res);
+        }
+    },
+    market: {
+        async getTicker(symbol: string) {
+            const res = await fetch(`${API_BASE}/market/ticker/${encodeURIComponent(symbol)}`, { headers: getHeaders() });
+            return handleResponse<TickerInfo>(res);
+        },
+        async getBotTicker(botId: string) {
+            const res = await fetch(`${API_BASE}/market/bot/${botId}/ticker`, { headers: getHeaders() });
+            return handleResponse<BotTickerInfo>(res);
+        },
+        async getBotMarketInfo(botId: string) {
+            const res = await fetch(`${API_BASE}/market/bot/${botId}/market-info`, { headers: getHeaders() });
+            return handleResponse<MarketInfo>(res);
         }
     }
 };
+
+// Types
+export interface ConfigItem {
+    id: string;
+    key: string;
+    value: string;
+    description?: string;
+    category: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ConfigHistory {
+    id: string;
+    configItemId: string;
+    oldValue: string;
+    newValue: string;
+    changedBy?: string;
+    changedAt: string;
+}
+
+export interface ConfigTemplate {
+    id: string;
+    name: string;
+    description?: string;
+    configJson: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface TickerInfo {
+    symbol: string;
+    price: number;
+    timestamp: number;
+}
+
+export interface BotTickerInfo {
+    symbol: string;
+    price: number;
+    priceFormatted: string;
+    timestamp: number;
+    triggerInfo: {
+        sellTriggerPrice: string;
+        buyTriggerPrice: string;
+        sellDistance: string;
+        buyDistance: string;
+        riseSell: number;
+        fallBuy: number;
+    } | null;
+}
+
+export interface MarketInfo {
+    symbol: string;
+    pricePrecision: number;
+    amountPrecision: number;
+    minAmount: string;
+    minNotional: string;
+}

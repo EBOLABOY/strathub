@@ -14,6 +14,7 @@
         "@crypto-strategy-hub/exchange": "^0.1.0",
         "@crypto-strategy-hub/exchange-simulator": "*",
         "@crypto-strategy-hub/market-data": "*",
+        "@crypto-strategy-hub/observability": "*",
         "@crypto-strategy-hub/security": "*",
         "@crypto-strategy-hub/shared": "*"
     },

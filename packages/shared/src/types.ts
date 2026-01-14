@@ -179,7 +179,8 @@ export interface MarketInfo {
 
 /** 账户余额 */
 export interface Balance {
-    asset: string;
+    asset?: string;
     free: DecimalString;
     locked: DecimalString;
+    total: DecimalString;
 }

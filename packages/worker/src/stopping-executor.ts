@@ -8,6 +8,7 @@ import { prisma, Prisma } from '@crypto-strategy-hub/database';
 import type { TradingExecutor, OpenOrder } from '@crypto-strategy-hub/shared';
 import type { StoppingResult } from './worker.js';
 import { classifyRetryableError, computeBackoffMs } from './retry.js';
+import { alertCritical, recordRiskTriggered } from './metrics.js';
 
 // Re-export for backward compatibility
 export type ExchangeExecutor = Pick<TradingExecutor, 'fetchOpenOrders' | 'cancelOrder'>;
@@ -183,6 +184,13 @@ async function handleStoppingFailure(input: {
                 lastError: `STOPPING_FAILED: ${info.code ?? 'UNKNOWN'}: ${info.message}`,
             },
         });
+
+        // 发送严重告警：清仓失败
+        void alertCritical(
+            '清仓失败',
+            `Bot 撤单过程中遇到不可恢复错误: ${info.message}`,
+            { botId: input.botId }
+        );
 
         return {
             success: false,
