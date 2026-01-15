@@ -9,6 +9,7 @@ import { Bot, ArrowLeft, Loader2, Save, AlertCircle, Plus, RefreshCw } from "luc
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useTranslations } from "next-intl";
 import { GridConfigForm } from "@/components/GridConfigForm";
+import { SymbolPairSelector } from "@/components/SymbolPairSelector";
 import clsx from "clsx";
 
 // Valid V1 GridStrategyConfig
@@ -54,6 +55,7 @@ export default function NewBotPage() {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
     const [accountId, setAccountId] = useState("");
+    const [holdingCoins, setHoldingCoins] = useState<string[]>([]);
 
     const [symbol, setSymbol] = useState("BNB/USDT");
     const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -62,6 +64,38 @@ export default function NewBotPage() {
     useEffect(() => {
         fetchAccounts();
     }, []);
+
+    // Fetch holding coins when account changes
+    useEffect(() => {
+        const fetchHoldings = async () => {
+            if (!accountId) {
+                setHoldingCoins([]);
+                return;
+            }
+            try {
+                const balances = await api.accounts.getBalance(accountId);
+                // Extract coins with balance > 0
+                const coins = Object.entries(balances)
+                    .filter(([_, bal]) => parseFloat(bal.total) > 0)
+                    .map(([asset]) => asset)
+                    .sort((a, b) => {
+                        // Prioritize common stables and trading coins
+                        const priority = ['USDT', 'USDC', 'BUSD', 'BNB', 'BTC', 'ETH'];
+                        const aIdx = priority.indexOf(a);
+                        const bIdx = priority.indexOf(b);
+                        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                        if (aIdx !== -1) return -1;
+                        if (bIdx !== -1) return 1;
+                        return a.localeCompare(b);
+                    });
+                setHoldingCoins(coins);
+            } catch (err) {
+                console.error("Failed to fetch holdings:", err);
+                setHoldingCoins([]);
+            }
+        };
+        fetchHoldings();
+    }, [accountId]);
 
     const fetchAccounts = async () => {
         setIsLoadingAccounts(true);
@@ -190,14 +224,13 @@ export default function NewBotPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">{t("symbolLabel")}</label>
-                                    <input
-                                        type="text"
+                                    <label className="block text-sm font-bold text-slate-700 mb-3">{t("symbolLabel")}</label>
+                                    <SymbolPairSelector
                                         value={symbol}
-                                        onChange={(e) => setSymbol(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all font-mono text-sm uppercase"
-                                        placeholder={t("symbolPlaceholder")}
-                                        required
+                                        onChange={setSymbol}
+                                        baseLabel={t("baseCoinLabel")}
+                                        quoteLabel={t("quoteCoinLabel")}
+                                        holdingCoins={holdingCoins}
                                     />
                                 </div>
 

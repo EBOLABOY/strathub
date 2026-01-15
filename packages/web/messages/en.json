@@ -105,13 +105,24 @@
       "action": "Action"
     },
     "exchangeLimit": "Binance · Limit",
-    "manage": "Manage"
+    "manage": "Manage",
+    "retry": "Retry",
+    "noBotsYet": "No bots yet",
+    "createFirstBot": "Create your first bot"
   },
   "kpi": {
-    "totalProfit": "Total Profit",
+    "totalProfit": "Total Assets",
     "activeBots": "Active Bots",
     "winRate": "Win Rate",
-    "volume24h": "24h Volume"
+    "volume24h": "24h Volume",
+    "clickToView": "Click to view",
+    "balanceDetails": "Asset Holdings",
+    "noAssets": "No assets found",
+    "asset": "Asset",
+    "available": "Available",
+    "locked": "Locked",
+    "total": "Total",
+    "stablecoinsOnly": "Total assets shows stablecoin value only"
   },
   "chart": {
     "title": "Portfolio Performance",
@@ -154,7 +165,9 @@
     "createMockButton": "Test Acc",
     "refreshTitle": "Refresh Accounts",
     "noAccounts": "No exchange accounts found. Create a test account to proceed.",
-    "symbolLabel": "Symbol",
+    "symbolLabel": "Trading Pair",
+    "baseCoinLabel": "Base Coin",
+    "quoteCoinLabel": "Quote Coin",
     "symbolPlaceholder": "e.g. BNB/USDT",
     "configLabel": "Configuration (JSON)",
     "submit": "Create Draft Bot",

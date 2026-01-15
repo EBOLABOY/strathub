@@ -119,13 +119,24 @@
       "action": "操作"
     },
     "exchangeLimit": "Binance · 限价单",
-    "manage": "管理"
+    "manage": "管理",
+    "retry": "重试",
+    "noBotsYet": "暂无机器人",
+    "createFirstBot": "创建你的第一个机器人"
   },
   "kpi": {
     "totalProfit": "账户总资产",
     "activeBots": "活跃机器人",
     "winRate": "胜率",
-    "volume24h": "成交量（24小时）"
+    "volume24h": "成交量（24小时）",
+    "clickToView": "点击查看",
+    "balanceDetails": "持仓明细",
+    "noAssets": "暂无资产",
+    "asset": "币种",
+    "available": "可用",
+    "locked": "冻结",
+    "total": "总量",
+    "stablecoinsOnly": "总资产仅统计稳定币价值"
   },
   "chart": {
     "title": "资产表现",
@@ -172,6 +183,8 @@
     "refreshTitle": "刷新账户列表",
     "noAccounts": "未找到交易所账户。请先创建测试账户再继续。",
     "symbolLabel": "交易对",
+    "baseCoinLabel": "交易币",
+    "quoteCoinLabel": "结算币",
     "symbolPlaceholder": "例如：BNB/USDT",
     "configLabel": "配置（JSON）",
     "submit": "创建草稿",

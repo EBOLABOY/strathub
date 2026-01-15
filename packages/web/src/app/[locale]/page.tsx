@@ -1,8 +1,9 @@
 
 import { Sidebar } from "@/components/Sidebar";
-import { KPICards } from "@/components/KPICards"; // Assuming standard exports
+import { KPICards } from "@/components/KPICards";
 import { MainChart } from "@/components/MainChart";
 import { TopologyMap } from "@/components/TopologyMap";
+import { ActiveBotsList } from "@/components/ActiveBotsList";
 import { Bell, Search } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
@@ -15,7 +16,6 @@ export default async function Dashboard({
   setRequestLocale(locale);
 
   const t = await getTranslations("dashboard");
-  const tStatus = await getTranslations("botStatus");
 
   return (
     <div className="flex h-screen bg-page overflow-hidden">
@@ -80,11 +80,11 @@ export default async function Dashboard({
             </div>
           </section>
 
-          {/* 3. Recent Activity / Status List (Placeholder for now) */}
+          {/* 3. Recent Activity / Status List */}
           <section className="bg-white rounded-2xl shadow-diffuse border border-slate-50 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-slate-700">{t("activeBotsTitle")}</h3>
-              <button className="text-sm text-teal-600 font-medium hover:text-teal-700">{t("viewAll")}</button>
+              <a href="/bots" className="text-sm text-teal-600 font-medium hover:text-teal-700">{t("viewAll")}</a>
             </div>
 
             {/* Simple Table Header */}
@@ -95,32 +95,8 @@ export default async function Dashboard({
               <div className="text-right">{t("table.action")}</div>
             </div>
 
-            {/* List Items */}
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="grid grid-cols-5 items-center py-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 px-2 rounded-lg transition-colors">
-                <div className="col-span-2 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center text-teal-600 font-bold text-xs border border-teal-100">
-                    B{i}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-700 text-sm">{t("demoBotName", { symbol: "BNB/USDT", i })}</div>
-                    <div className="text-xs text-slate-400">{t("exchangeLimit")}</div>
-                  </div>
-                </div>
-                <div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    {tStatus("RUNNING")}
-                  </span>
-                </div>
-                <div className="text-sm font-semibold text-slate-700">+$124.50</div>
-                <div className="text-right">
-                  <button className="text-xs font-medium text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all">
-                    {t("manage")}
-                  </button>
-                </div>
-              </div>
-            ))}
+            {/* Real Bots List */}
+            <ActiveBotsList />
           </section>
         </div>
       </main>
