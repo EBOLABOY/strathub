@@ -16,6 +16,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@crypto-strategy-hub/ccxt-utils": "*",
     "@crypto-strategy-hub/shared": "*",
     "ccxt": "^4.5.31",
     "socks-proxy-agent": "^8.0.5"

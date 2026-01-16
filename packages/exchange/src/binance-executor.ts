@@ -15,121 +15,8 @@ import type {
     CreateOrderResult,
     Balance
 } from '@crypto-strategy-hub/shared';
-import { ORDER_PREFIX, ExchangeUnavailableError, RateLimitError, TimeoutError } from '@crypto-strategy-hub/shared';
-
-type CcxtProxyConfig = Partial<{
-    httpProxy: string;
-    httpsProxy: string;
-    socksProxy: string;
-    httpProxyCallback: (url: string, method?: string, headers?: any, body?: any) => string | undefined;
-    httpsProxyCallback: (url: string, method?: string, headers?: any, body?: any) => string | undefined;
-    socksProxyCallback: (url: string, method?: string, headers?: any, body?: any) => string | undefined;
-}>;
-
-type ProxyType = 'http' | 'https' | 'socks';
-type ProxySpec = { type: ProxyType; url: string };
-
-function readCcxtProxyUrl(): string | undefined {
-    const raw =
-        process.env['CCXT_PROXY_URL'] ||
-        process.env['CCXT_PROXY'] ||
-        process.env['ALL_PROXY'] ||
-        process.env['all_proxy'] ||
-        process.env['HTTPS_PROXY'] ||
-        process.env['https_proxy'] ||
-        process.env['HTTP_PROXY'] ||
-        process.env['http_proxy'];
-
-    const trimmed = raw?.trim();
-    return trimmed ? trimmed : undefined;
-}
-
-function parseProxySpec(raw: string): ProxySpec | undefined {
-    const trimmed = raw.trim();
-    if (!trimmed) return undefined;
-
-    const lower = trimmed.toLowerCase();
-    if (lower.startsWith('socks')) return { type: 'socks', url: trimmed };
-    if (lower.startsWith('https://')) return { type: 'https', url: trimmed };
-    if (lower.startsWith('http://')) return { type: 'http', url: trimmed };
-
-    // Host:port without scheme → assume http proxy.
-    if (/^[^\s:]+:\d+$/.test(trimmed)) {
-        return { type: 'http', url: `http://${trimmed}` };
-    }
-
-    return { type: 'http', url: trimmed };
-}
-
-function readNoProxyList(): string[] {
-    const raw = process.env['CCXT_NO_PROXY'] || process.env['NO_PROXY'] || process.env['no_proxy'];
-    if (!raw) return [];
-
-    return raw
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-}
-
-function stripPort(host: string): string {
-    const idx = host.lastIndexOf(':');
-    if (idx === -1) return host;
-    const port = host.slice(idx + 1);
-    if (/^\d+$/.test(port)) return host.slice(0, idx);
-    return host;
-}
-
-function matchesNoProxy(hostname: string, noProxyList: string[]): boolean {
-    for (const raw of noProxyList) {
-        const rule = stripPort(raw.trim().toLowerCase());
-        if (!rule) continue;
-        if (rule === '*') return true;
-
-        const normalized = rule.startsWith('.') ? rule.slice(1) : rule;
-        if (!normalized) continue;
-
-        if (hostname === normalized) return true;
-        if (hostname.endsWith(`.${normalized}`)) return true;
-    }
-    return false;
-}
-
-function createProxyCallback(proxyUrl: string, noProxyList: string[]) {
-    const rules = noProxyList.map((s) => s.trim()).filter(Boolean);
-    if (rules.length === 0) {
-        return () => proxyUrl;
-    }
-
-    return (url: string) => {
-        try {
-            const hostname = new URL(url).hostname.toLowerCase();
-            if (matchesNoProxy(hostname, rules)) return undefined;
-            return proxyUrl;
-        } catch {
-            return proxyUrl;
-        }
-    };
-}
-
-function getCcxtProxyConfig(): CcxtProxyConfig {
-    const proxyUrl = readCcxtProxyUrl();
-    if (!proxyUrl) return {};
-
-    const spec = parseProxySpec(proxyUrl);
-    if (!spec) return {};
-
-    const noProxyList = readNoProxyList();
-    if (noProxyList.length > 0) {
-        const callback = createProxyCallback(spec.url, noProxyList);
-        if (spec.type === 'socks') return { socksProxyCallback: callback };
-        if (spec.type === 'https') return { httpsProxyCallback: callback };
-        return { httpProxyCallback: callback };
-    }
-
-    if (spec.type === 'socks') return { socksProxy: spec.url };
-    if (spec.type === 'https') return { httpsProxy: spec.url };
-    return { httpProxy: spec.url };
-}
+import { ORDER_PREFIX, OrderStatus } from '@crypto-strategy-hub/shared';
+import { getCcxtProxyConfig, mapCcxtError as mapCcxtErrorUtil, trySetSandboxMode } from '@crypto-strategy-hub/ccxt-utils';
 
 export interface BinanceExecutorConfig {
     apiKey: string;
@@ -159,7 +46,10 @@ export class BinanceExecutor implements TradingExecutor {
         });
 
         if (config.isTestnet) {
-            this.exchange.setSandboxMode(true);
+            const sandboxEnabled = trySetSandboxMode(this.exchange, true);
+            if (!sandboxEnabled) {
+                throw new Error('TESTNET_NOT_SUPPORTED');
+            }
         }
     }
 
@@ -175,7 +65,7 @@ export class BinanceExecutor implements TradingExecutor {
                     clientOrderId: o.clientOrderId!,
                 }));
         } catch (error) {
-            throw mapCcxtError('fetchOpenOrders', error);
+            throw mapCcxtErrorUtil('fetchOpenOrders', error);
         }
     }
 
@@ -186,7 +76,7 @@ export class BinanceExecutor implements TradingExecutor {
                 .filter(o => (o.clientOrderId?.startsWith(ORDER_PREFIX)) ?? false)
                 .map(this.mapToFullOrder);
         } catch (error) {
-            throw mapCcxtError('fetchOpenOrdersFull', error);
+            throw mapCcxtErrorUtil('fetchOpenOrdersFull', error);
         }
     }
 
@@ -196,7 +86,7 @@ export class BinanceExecutor implements TradingExecutor {
             const sinceTs = since ? new Date(since).getTime() : undefined;
             trades = await this.exchange.fetchMyTrades(symbol, sinceTs);
         } catch (error) {
-            throw mapCcxtError('fetchMyTrades', error);
+            throw mapCcxtErrorUtil('fetchMyTrades', error);
         }
 
         // 如果 trade 缺少 clientOrderId，尝试补充 (API 限制：部分 trade 可能没有 clientOrderId)
@@ -240,7 +130,7 @@ export class BinanceExecutor implements TradingExecutor {
             if (e.message?.includes('Unknown order') || e.message?.includes('Order was not found')) {
                 return;
             }
-            throw mapCcxtError('cancelOrder', e);
+            throw mapCcxtErrorUtil('cancelOrder', e);
         }
     }
 
@@ -268,7 +158,7 @@ export class BinanceExecutor implements TradingExecutor {
             return {
                 exchangeOrderId: order.id,
                 clientOrderId: params.clientOrderId,
-                status: order.status || 'NEW',
+                status: this.mapToOrderStatus(order),
             };
         } catch (e: any) {
             // 幂等性处理：如果报 Duplicate clientOrderId，说明已提交成功
@@ -293,7 +183,7 @@ export class BinanceExecutor implements TradingExecutor {
                     return {
                         exchangeOrderId: existing.id,
                         clientOrderId: params.clientOrderId,
-                        status: existing.status || 'unknown',
+                        status: this.mapToOrderStatus(existing),
                     };
                 } catch (fetchErr) {
                     // 如果反查失败，抛出原始错误
@@ -301,7 +191,7 @@ export class BinanceExecutor implements TradingExecutor {
                     throw e;
                 }
             }
-            throw mapCcxtError('createOrder', e);
+            throw mapCcxtErrorUtil('createOrder', e);
         }
     }
 
@@ -322,7 +212,7 @@ export class BinanceExecutor implements TradingExecutor {
             });
             return result;
         } catch (e) {
-            throw mapCcxtError('fetchBalance', e);
+            throw mapCcxtErrorUtil('fetchBalance', e);
         }
     }
 
@@ -338,6 +228,22 @@ export class BinanceExecutor implements TradingExecutor {
         return msg.includes('Duplicate') || msg.includes('Order already exists');
     }
 
+    private mapToOrderStatus(o: Order): OrderStatus {
+        const status = (o.status ?? '').toString().toLowerCase();
+        if (status === 'new') return OrderStatus.NEW;
+        if (status === 'partially_filled') return OrderStatus.PARTIALLY_FILLED;
+        if (status === 'filled') return OrderStatus.FILLED;
+        if (status === 'open') {
+            const filled = typeof o.filled === 'number' ? o.filled : 0;
+            return filled > 0 ? OrderStatus.PARTIALLY_FILLED : OrderStatus.NEW;
+        }
+        if (status === 'closed') return OrderStatus.FILLED;
+        if (status === 'canceled' || status === 'cancelled') return OrderStatus.CANCELED;
+        if (status === 'expired') return OrderStatus.EXPIRED;
+        if (status === 'rejected') return OrderStatus.REJECTED;
+        return OrderStatus.NEW;
+    }
+
     private mapToFullOrder(o: Order): FullOrderRecord {
         return {
             id: o.id,
@@ -348,24 +254,11 @@ export class BinanceExecutor implements TradingExecutor {
             price: o.price.toString(),
             amount: o.amount.toString(),
             filledAmount: o.filled.toString(),
-            status: o.status || 'unknown',
+            status: this.mapToOrderStatus(o),
         };
     }
 }
 
 export function createBinanceExecutor(config: BinanceExecutorConfig): TradingExecutor {
     return new BinanceExecutor(config);
-}
-
-function mapCcxtError(operation: string, error: unknown): unknown {
-    if (error instanceof ccxt.RateLimitExceeded || error instanceof ccxt.DDoSProtection) {
-        return new RateLimitError(undefined, error);
-    }
-    if (error instanceof ccxt.RequestTimeout) {
-        return new TimeoutError(`Request timeout: ${operation}`, error);
-    }
-    if (error instanceof ccxt.NetworkError || error instanceof ccxt.ExchangeNotAvailable) {
-        return new ExchangeUnavailableError(`Exchange unavailable: ${operation}`, error);
-    }
-    return error;
 }

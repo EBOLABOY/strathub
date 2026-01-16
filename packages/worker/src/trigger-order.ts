@@ -13,8 +13,22 @@
  */
 
 import { prisma, Prisma } from '@crypto-strategy-hub/database';
-import type { GridConfig, PreviewMarketInfo, PreviewResult, TradingExecutor } from '@crypto-strategy-hub/shared';
-import { calculatePreview, checkPriceBounds, generateClientOrderId } from '@crypto-strategy-hub/shared';
+import type {
+    Balance,
+    GridConfig,
+    PreviewBalanceInfo,
+    PreviewMarketInfo,
+    PreviewOrderBookInfo,
+    PreviewOrder,
+    PreviewResult,
+    TradingExecutor,
+} from '@crypto-strategy-hub/shared';
+import {
+    calculatePreview,
+    checkPriceBounds,
+    generateClientOrderId,
+    riskGate,
+} from '@crypto-strategy-hub/shared';
 import { Decimal } from 'decimal.js';
 import { classifyRetryableError, computeBackoffMs } from './retry.js';
 import { alertCritical, alertWarning } from './metrics.js';
@@ -32,6 +46,151 @@ const SUBMIT_BACKOFF = {
 
 type SubmitRetryState = { attempts: number; nextAtMs: number };
 const submitRetryState = new Map<string, SubmitRetryState>(); // key: Order.id
+
+type TriggerConfirmState =
+    | { side: 'buy'; troughPrice: string; updatedAtMs: number }
+    | { side: 'sell'; peakPrice: string; updatedAtMs: number };
+
+const triggerConfirmState = new Map<string, TriggerConfirmState>(); // key: Bot.id
+
+function parseDecimalSafe(value: string | undefined, fallback: string = '0'): Decimal {
+    try {
+        return new Decimal(value ?? fallback);
+    } catch {
+        return new Decimal(fallback);
+    }
+}
+
+function getSchemaVersion(config: GridConfig): number {
+    const raw = config.schemaVersion;
+    if (typeof raw !== 'number') return 1;
+    if (!Number.isFinite(raw)) return 1;
+    return Math.trunc(raw);
+}
+
+function percentToRatio(value: string | undefined, schemaVersion: number): Decimal {
+    const raw = parseDecimalSafe(value);
+    return schemaVersion >= 2 ? raw : raw.div(100);
+}
+
+function normalizeBookLevel(raw: unknown, fallback: number = 1): number {
+    if (typeof raw !== 'number') return fallback;
+    if (!Number.isFinite(raw)) return fallback;
+    const n = Math.trunc(raw);
+    return Math.max(1, Math.min(5, n));
+}
+
+function getOrderBookPrice(
+    orderBook: PreviewOrderBookInfo | undefined,
+    side: 'buy' | 'sell',
+    level: number
+): string | null {
+    if (!orderBook) return null;
+    const idx = Math.max(1, Math.min(5, level)) - 1;
+    const levels = side === 'buy' ? orderBook.asks : orderBook.bids;
+    const price = levels[idx]?.price;
+    if (typeof price !== 'string' || price.length === 0) return null;
+    return price;
+}
+
+function parseSymbolPair(symbol: string): { base: string; quote: string } | null {
+    const parts = symbol.split('/');
+    if (parts.length !== 2) return null;
+    const base = parts[0]?.trim();
+    const quote = parts[1]?.trim();
+    if (!base || !quote) return null;
+    return { base, quote };
+}
+
+function getPreviewOrder(preview: PreviewResult, side: 'buy' | 'sell'): PreviewOrder | null {
+    const order = preview.orders.find((o) => o.side === side);
+    return order ?? null;
+}
+
+function computeBaseAmountFromQuote(
+    quoteAmount: string,
+    price: string,
+    amountPrecision: number
+): string | null {
+    let quote: Decimal;
+    let p: Decimal;
+    try {
+        quote = new Decimal(quoteAmount);
+        p = new Decimal(price);
+    } catch {
+        return null;
+    }
+    if (p.lte(0)) return null;
+    return quote.div(p).toFixed(amountPrecision);
+}
+
+function normalizePositionPercent(configValue: string, schemaVersion: number): Decimal {
+    const raw = parseDecimalSafe(configValue);
+    // v1: 0-100 (percent points), v2+: 0-1 ratio
+    return schemaVersion >= 2 ? raw.mul(100) : raw;
+}
+
+function computeCurrentPositionPercent(
+    balances: Record<string, Balance>,
+    symbol: { base: string; quote: string },
+    tickerLast: string
+): Decimal | undefined {
+    const baseTotal = parseDecimalSafe(balances[symbol.base]?.total);
+    const quoteTotal = parseDecimalSafe(balances[symbol.quote]?.total);
+    const last = parseDecimalSafe(tickerLast);
+
+    if (last.lte(0)) return undefined;
+
+    const baseValue = baseTotal.mul(last);
+    const totalValue = baseValue.plus(quoteTotal);
+    if (totalValue.lte(0)) return undefined;
+
+    return baseValue.div(totalValue).mul(100);
+}
+
+function isSideBlockedByConfig(
+    config: GridConfig,
+    schemaVersion: number,
+    side: 'buy' | 'sell',
+    currentPrice: string,
+    currentPositionPercent?: Decimal
+): { blocked: boolean; code?: string; reason?: string } {
+    // RiskGate (buy/sell enable switches)
+    const risk = riskGate(
+        { enableBuy: config.risk?.enableBuy, enableSell: config.risk?.enableSell },
+        { side }
+    );
+    if (risk.blocked) {
+        return { blocked: true, code: risk.code, reason: risk.reason };
+    }
+
+    // Position bounds (V1 minimal): max blocks buy, min blocks sell
+    if (currentPositionPercent) {
+        if (side === 'buy' && config.position?.maxPositionPercent) {
+            const max = normalizePositionPercent(config.position.maxPositionPercent, schemaVersion);
+            if (currentPositionPercent.gte(max)) {
+                return {
+                    blocked: true,
+                    code: 'POSITION_ABOVE_MAX',
+                    reason: `Position ${currentPositionPercent.toFixed(2)}% is above maximum ${max.toFixed(2)}%`,
+                };
+            }
+        }
+
+        if (side === 'sell' && config.position?.minPositionPercent) {
+            const min = normalizePositionPercent(config.position.minPositionPercent, schemaVersion);
+            if (currentPositionPercent.lte(min)) {
+                return {
+                    blocked: true,
+                    code: 'POSITION_BELOW_MIN',
+                    reason: `Position ${currentPositionPercent.toFixed(2)}% is below minimum ${min.toFixed(2)}%`,
+                };
+            }
+        }
+    }
+
+    return { blocked: false };
+}
 
 async function markBotError(botId: string, reason: string): Promise<void> {
     const current = await prisma.bot.findUnique({
@@ -65,6 +224,7 @@ export interface ProcessTriggerOrderInput {
     pricePrecision?: number;
     amountPrecision?: number;
     marketInfo?: PreviewMarketInfo;
+    orderBook?: PreviewOrderBookInfo;
 }
 
 function buildMarketInfo(
@@ -260,11 +420,9 @@ export async function processTriggerOrder(
         return;
     }
 
-    // 仅支持 limit（V1 最小闭环）
-    if (rawConfig.order?.orderType !== 'limit') {
-        return;
-    }
+    const schemaVersion = getSchemaVersion(rawConfig);
 
+    // 仅支持 limit（V1 最小闭环）
     let config: GridConfig;
     try {
         config = normalizeExecutionConfig(bot, rawConfig);
@@ -276,12 +434,45 @@ export async function processTriggerOrder(
     const market = input.marketInfo || buildMarketInfo(bot.symbol, pricePrecision, amountPrecision);
     const ticker = { last: input.tickerPrice };
 
+    const symbolPair = parseSymbolPair(bot.symbol);
+    const needsBalances =
+        config.sizing.amountMode === 'percent' ||
+        !!config.position?.maxPositionPercent ||
+        !!config.position?.minPositionPercent;
+
+    let balances: Record<string, Balance> | null = null;
+    let previewBalance: PreviewBalanceInfo | undefined;
+    let currentPositionPercent: Decimal | undefined;
+
+    if (needsBalances) {
+        if (!symbolPair) {
+            console.warn(`[TriggerOrder] Bot ${botId}: invalid symbol format ${bot.symbol}`);
+            return;
+        }
+
+        try {
+            balances = await input.executor.fetchBalance();
+        } catch (error) {
+            console.error(`[TriggerOrder] Bot ${botId}: failed to fetch balance:`, error);
+            return;
+        }
+
+        if (config.sizing.amountMode === 'percent') {
+            const freeQuote = balances[symbolPair.quote]?.free ?? '0';
+            if (parseDecimalSafe(freeQuote).lte(0)) {
+                return;
+            }
+            previewBalance = { quote: symbolPair.quote, free: freeQuote };
+        }
+
+        if (config.position?.maxPositionPercent || config.position?.minPositionPercent) {
+            currentPositionPercent = computeCurrentPositionPercent(balances, symbolPair, ticker.last);
+        }
+    }
+
     // BoundsGate（ACC-GATE-001）：价格越界时不触发、不下单（不进入 ERROR）
     try {
-        const gate = checkPriceBounds(
-            { priceMin: config.trigger.priceMin, priceMax: config.trigger.priceMax },
-            { currentPrice: ticker.last }
-        );
+        const gate = checkPriceBounds({ priceMin: config.trigger.priceMin }, { currentPrice: ticker.last });
         if (gate.blocked) {
             return;
         }
@@ -304,6 +495,9 @@ export async function processTriggerOrder(
         // 用“上一腿成交均价”作为下一腿定价基准
         const legConfig: GridConfig = {
             ...config,
+            // 网格的“下一腿”固定使用 limit 挂单；market 仅用于入场（WAITING_TRIGGER）。
+            // 否则会出现：config.order.orderType=market 时 Preview 没有 limit order，导致下一腿无法计算 baseAmount。
+            order: { ...config.order, orderType: 'limit' },
             trigger: {
                 ...config.trigger,
                 basePriceType: 'manual',
@@ -311,11 +505,16 @@ export async function processTriggerOrder(
             },
         };
 
-        const legPreview = calculatePreview(legConfig, market, ticker);
+        const legPreview = calculatePreview(legConfig, market, ticker, previewBalance);
 
         const nextSide: 'buy' | 'sell' = lastFilled.side === 'buy' ? 'sell' : 'buy';
         const nextPrice = nextSide === 'sell' ? legPreview.sellTriggerPrice : legPreview.buyTriggerPrice;
         const nextBaseAmount = getLimitBaseAmount(legPreview, nextSide);
+
+        const blocked = isSideBlockedByConfig(config, schemaVersion, nextSide, ticker.last, currentPositionPercent);
+        if (blocked.blocked) {
+            return;
+        }
 
         // next intentSeq = max(intentSeq)+1
         const lastIntent = await prisma.order.findFirst({
@@ -354,7 +553,7 @@ export async function processTriggerOrder(
         return;
     }
 
-    const preview = calculatePreview(config, market, ticker);
+    const preview = calculatePreview(config, market, ticker, previewBalance);
 
     // 使用 Decimal 进行触发判断（避免浮点误差）
     let last: Decimal;
@@ -370,50 +569,183 @@ export async function processTriggerOrder(
         return;
     }
 
+    const entryOrderType: 'limit' | 'market' = config.order.orderType === 'market' ? 'market' : 'limit';
+    const entryPriceSource: 'trigger' | 'orderbook' =
+        config.order.entryPriceSource === 'orderbook' ? 'orderbook' : 'trigger';
+    const entryBookLevel = normalizeBookLevel(config.order.entryBookLevel, 1);
+    const resolveEntryExecutionPrice = (s: 'buy' | 'sell', fallback: string): string => {
+        if (entryPriceSource !== 'orderbook') return fallback;
+        return getOrderBookPrice(input.orderBook, s, entryBookLevel) ?? fallback;
+    };
+
     let side: 'buy' | 'sell' | null = null;
     let limitPrice: string | null = null;
     let baseAmount: string | null = null;
+    let priceForChecks: string | null = null;
 
-    if (last.lte(buyTrigger)) {
-        side = 'buy';
-        limitPrice = preview.buyTriggerPrice;
-        baseAmount = getLimitBaseAmount(preview, 'buy');
-    } else if (last.gte(sellTrigger)) {
-        side = 'sell';
-        limitPrice = preview.sellTriggerPrice;
-        baseAmount = getLimitBaseAmount(preview, 'sell');
-    } else {
+    const enablePullbackSell = !!config.trigger.enablePullbackSell && !!config.trigger.pullbackSellPercent;
+    const enableReboundBuy = !!config.trigger.enableReboundBuy && !!config.trigger.reboundBuyPercent;
+    const pullbackRatio = enablePullbackSell ? percentToRatio(config.trigger.pullbackSellPercent, schemaVersion) : new Decimal(0);
+    const reboundRatio = enableReboundBuy ? percentToRatio(config.trigger.reboundBuyPercent, schemaVersion) : new Decimal(0);
+
+    const nowMs = Date.now();
+    const existingState = triggerConfirmState.get(botId);
+    if (existingState && nowMs - existingState.updatedAtMs > 24 * 60 * 60 * 1000) {
+        triggerConfirmState.delete(botId);
+    }
+
+    const state = triggerConfirmState.get(botId);
+
+    if (state?.side === 'buy') {
+        if (!enableReboundBuy || reboundRatio.lte(0)) {
+            triggerConfirmState.delete(botId);
+        } else {
+            const trough = new Decimal(state.troughPrice);
+            const nextTrough = last.lt(trough) ? last : trough;
+            const threshold = nextTrough.mul(new Decimal(1).plus(reboundRatio));
+
+            if (last.gte(threshold)) {
+                const order = getPreviewOrder(preview, 'buy');
+                if (!order) return;
+
+                side = 'buy';
+                const execPrice = resolveEntryExecutionPrice('buy', ticker.last);
+                priceForChecks = execPrice;
+                if (entryOrderType === 'limit') {
+                    limitPrice = execPrice;
+                }
+                baseAmount = computeBaseAmountFromQuote(order.quoteAmount, execPrice, amountPrecision);
+                triggerConfirmState.delete(botId);
+            } else {
+                triggerConfirmState.set(botId, {
+                    side: 'buy',
+                    troughPrice: nextTrough.toString(),
+                    updatedAtMs: nowMs,
+                });
+                return;
+            }
+        }
+    } else if (state?.side === 'sell') {
+        if (!enablePullbackSell || pullbackRatio.lte(0)) {
+            triggerConfirmState.delete(botId);
+        } else {
+            const peak = new Decimal(state.peakPrice);
+            const nextPeak = last.gt(peak) ? last : peak;
+            const threshold = nextPeak.mul(new Decimal(1).minus(pullbackRatio));
+
+            if (last.lte(threshold)) {
+                const order = getPreviewOrder(preview, 'sell');
+                if (!order) return;
+
+                side = 'sell';
+                const execPrice = resolveEntryExecutionPrice('sell', ticker.last);
+                priceForChecks = execPrice;
+                if (entryOrderType === 'limit') {
+                    limitPrice = execPrice;
+                }
+                baseAmount = computeBaseAmountFromQuote(order.quoteAmount, execPrice, amountPrecision);
+                triggerConfirmState.delete(botId);
+            } else {
+                triggerConfirmState.set(botId, {
+                    side: 'sell',
+                    peakPrice: nextPeak.toString(),
+                    updatedAtMs: nowMs,
+                });
+                return;
+            }
+        }
+    }
+
+    if (!side) {
+        if (last.lte(buyTrigger)) {
+            if (enableReboundBuy && reboundRatio.gt(0)) {
+                triggerConfirmState.set(botId, {
+                    side: 'buy',
+                    troughPrice: last.toString(),
+                    updatedAtMs: nowMs,
+                });
+                return;
+            }
+
+            side = 'buy';
+            const order = getPreviewOrder(preview, 'buy');
+            if (!order) return;
+
+            if (entryOrderType === 'limit' && entryPriceSource === 'trigger') {
+                limitPrice = preview.buyTriggerPrice;
+                priceForChecks = limitPrice;
+                baseAmount = getLimitBaseAmount(preview, 'buy');
+            } else {
+                const execPrice = resolveEntryExecutionPrice('buy', ticker.last);
+                priceForChecks = execPrice;
+                if (entryOrderType === 'limit') {
+                    limitPrice = execPrice;
+                }
+                baseAmount = computeBaseAmountFromQuote(order.quoteAmount, execPrice, amountPrecision);
+            }
+        } else if (last.gte(sellTrigger)) {
+            if (enablePullbackSell && pullbackRatio.gt(0)) {
+                triggerConfirmState.set(botId, {
+                    side: 'sell',
+                    peakPrice: last.toString(),
+                    updatedAtMs: nowMs,
+                });
+                return;
+            }
+
+            side = 'sell';
+            const order = getPreviewOrder(preview, 'sell');
+            if (!order) return;
+
+            if (entryOrderType === 'limit' && entryPriceSource === 'trigger') {
+                limitPrice = preview.sellTriggerPrice;
+                priceForChecks = limitPrice;
+                baseAmount = getLimitBaseAmount(preview, 'sell');
+            } else {
+                const execPrice = resolveEntryExecutionPrice('sell', ticker.last);
+                priceForChecks = execPrice;
+                if (entryOrderType === 'limit') {
+                    limitPrice = execPrice;
+                }
+                baseAmount = computeBaseAmountFromQuote(order.quoteAmount, execPrice, amountPrecision);
+            }
+        } else {
+            return;
+        }
+    }
+
+    if (!baseAmount || !priceForChecks) {
+        return;
+    }
+    if (entryOrderType === 'limit' && !limitPrice) {
+        return;
+    }
+
+    const blocked = isSideBlockedByConfig(config, schemaVersion, side, ticker.last, currentPositionPercent);
+    if (blocked.blocked) {
+        triggerConfirmState.delete(botId);
         return;
     }
 
     // 6) 硬阻断：检查 minAmount 和 minNotional
     // 如果不满足，交易所会拒单，必须标记 bot ERROR 防止 outbox 无限重试
     const amountDec = new Decimal(baseAmount);
-    const priceDec = new Decimal(limitPrice);
+    const priceDec = new Decimal(priceForChecks);
     const notional = amountDec.mul(priceDec);
     const minAmountDec = new Decimal(market.minAmount || '0');
     const minNotionalDec = new Decimal(market.minNotional || '0');
 
     if (amountDec.lt(minAmountDec)) {
-        await prisma.bot.update({
-            where: { id: botId },
-            data: {
-                status: 'ERROR',
-                lastError: `BELOW_MIN_AMOUNT: order amount ${baseAmount} < minAmount ${market.minAmount}`,
-            },
-        });
+        await markBotError(botId, `BELOW_MIN_AMOUNT: order amount ${baseAmount} < minAmount ${market.minAmount}`);
         console.error(`[TriggerOrder] Bot ${botId}: BELOW_MIN_AMOUNT (${baseAmount} < ${market.minAmount})`);
         return;
     }
 
     if (notional.lt(minNotionalDec)) {
-        await prisma.bot.update({
-            where: { id: botId },
-            data: {
-                status: 'ERROR',
-                lastError: `BELOW_MIN_NOTIONAL: notional ${notional.toFixed(8)} < minNotional ${market.minNotional}`,
-            },
-        });
+        await markBotError(
+            botId,
+            `BELOW_MIN_NOTIONAL: notional ${notional.toFixed(8)} < minNotional ${market.minNotional}`
+        );
         console.error(`[TriggerOrder] Bot ${botId}: BELOW_MIN_NOTIONAL (${notional.toFixed(8)} < ${market.minNotional})`);
         return;
     }
@@ -455,9 +787,9 @@ export async function processTriggerOrder(
                 exchangeOrderId: null,
                 submittedAt: null,
                 side: side!,
-                type: 'limit',
+                type: entryOrderType,
                 status: 'NEW',
-                price: limitPrice!,
+                price: entryOrderType === 'limit' ? limitPrice! : null,
                 amount: baseAmount!,
                 filledAmount: '0',
                 avgFillPrice: null,

@@ -6,17 +6,35 @@ import { ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, DollarSign, Activity, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useTranslations } from "next-intl";
-import { api } from '@/lib/api';
-import { BotStatus, Balance } from '@crypto-strategy-hub/shared';
+import { api, DashboardStats } from '@/lib/api';
+import { Balance } from '@crypto-strategy-hub/shared';
 
-const KPI_DATA = [
+interface BalanceDetail {
+    asset: string;
+    free: string;
+    locked: string;
+    total: string;
+}
+
+interface KPIItem {
+    id: string;
+    value: string;
+    trend: string;
+    isPositive: boolean;
+    icon: typeof DollarSign;
+    color: string;
+    data: number[];
+    clickable: boolean;
+}
+
+const INITIAL_KPI_DATA: KPIItem[] = [
     {
         id: 'totalProfit',
         value: 'Loading...',
-        trend: '+12.5%', // Mock for now
+        trend: '--',
         isPositive: true,
         icon: DollarSign,
-        color: '#14B8A6', // Teal
+        color: '#14B8A6',
         data: [10, 15, 12, 20, 25, 22, 30, 28, 35, 40],
         clickable: true
     },
@@ -26,42 +44,35 @@ const KPI_DATA = [
         trend: '',
         isPositive: true,
         icon: Zap,
-        color: '#0EA5E9', // Sky Blue
+        color: '#0EA5E9',
         data: [5, 6, 6, 7, 6, 8, 8, 9, 8, 8],
         clickable: false
     },
     {
         id: 'winRate',
-        value: '68.5%',
-        trend: '-1.2%',
-        isPositive: false,
+        value: '--',
+        trend: '--',
+        isPositive: true,
         icon: Activity,
-        color: '#8B5CF6', // Purple
+        color: '#8B5CF6',
         data: [70, 69, 71, 68, 65, 66, 68, 67, 68, 68.5],
         clickable: false
     },
     {
         id: 'volume24h',
-        value: '$48.2k',
-        trend: '+5.4%',
+        value: '--',
+        trend: '--',
         isPositive: true,
         icon: Activity,
-        color: '#F59E0B', // Amber
+        color: '#F59E0B',
         data: [20, 25, 30, 28, 35, 40, 38, 45, 42, 48],
         clickable: false
     },
 ];
 
-interface BalanceDetail {
-    asset: string;
-    free: string;
-    locked: string;
-    total: string;
-}
-
 export function KPICards() {
     const t = useTranslations("kpi");
-    const [stats, setStats] = useState(KPI_DATA);
+    const [stats, setStats] = useState<KPIItem[]>(INITIAL_KPI_DATA);
     const [showBalanceModal, setShowBalanceModal] = useState(false);
     const [balanceDetails, setBalanceDetails] = useState<BalanceDetail[]>([]);
     const [accountName, setAccountName] = useState('');
@@ -69,30 +80,15 @@ export function KPICards() {
     useEffect(() => {
         const loadData = async () => {
             try {
-                // Fetch accounts and bots data in parallel
-                const [accounts, bots] = await Promise.all([
-                    api.accounts.list(),
-                    api.bots.list()
-                ]);
+                // Fetch dashboard stats from new API
+                const dashboardStats = await api.dashboard.getStats();
 
-                // Calculate active bots count (RUNNING or WAITING_TRIGGER)
-                const activeBots = bots.filter(bot =>
-                    bot.status === BotStatus.RUNNING ||
-                    bot.status === BotStatus.WAITING_TRIGGER ||
-                    bot.status === BotStatus.PAUSED
-                ).length;
-
-                // Calculate total bots for trend display
-                const totalBots = bots.length;
-
-                // Fetch total assets from first account
-                let totalAssets = 0;
+                // Fetch balance details for modal (keep existing logic)
+                const accounts = await api.accounts.list();
                 if (accounts.length > 0) {
                     setAccountName(accounts[0].name || 'Account');
                     const balances = await api.accounts.getBalance(accounts[0].id);
-                    const stables = ['USDT', 'BUSD', 'USDC', 'FDUSD', 'DAI'];
 
-                    // Store detailed balance for modal
                     const details: BalanceDetail[] = [];
                     Object.entries(balances).forEach(([asset, bal]) => {
                         const total = parseFloat(bal.total);
@@ -104,30 +100,59 @@ export function KPICards() {
                                 total: bal.total
                             });
                         }
-                        if (stables.includes(asset)) {
-                            totalAssets += total;
-                        }
                     });
-
-                    // Sort by total value descending
                     details.sort((a, b) => parseFloat(b.total) - parseFloat(a.total));
                     setBalanceDetails(details);
                 }
 
+                // Update KPI cards with real data
                 setStats(prev => {
                     const next = [...prev];
-                    // Update total assets
+
+                    // Total Assets
                     next[0] = {
                         ...next[0],
-                        value: `$${totalAssets.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        value: `$${dashboardStats.totalAssets.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        })}`,
+                        trend: dashboardStats.totalAssetsTrend,
+                        isPositive: !dashboardStats.totalAssetsTrend.startsWith('-')
                     };
-                    // Update active bots count
+
+                    // Active Bots
                     next[1] = {
                         ...next[1],
-                        value: String(activeBots),
-                        trend: `/${totalBots}`,
-                        isPositive: activeBots > 0
+                        value: String(dashboardStats.activeBots),
+                        trend: `/${dashboardStats.totalBots}`,
+                        isPositive: dashboardStats.activeBots > 0
                     };
+
+                    // Win Rate
+                    next[2] = {
+                        ...next[2],
+                        value: dashboardStats.winRate === '--' ? t('notImplemented') : dashboardStats.winRate,
+                        trend: dashboardStats.winRateTrend,
+                        isPositive: !dashboardStats.winRateTrend.startsWith('-')
+                    };
+
+                    // 24h Volume
+                    const volume = dashboardStats.volume24h;
+                    let volumeStr: string;
+                    if (volume >= 1000000) {
+                        volumeStr = `$${(volume / 1000000).toFixed(1)}M`;
+                    } else if (volume >= 1000) {
+                        volumeStr = `$${(volume / 1000).toFixed(1)}k`;
+                    } else {
+                        volumeStr = `$${volume.toFixed(2)}`;
+                    }
+                    next[3] = {
+                        ...next[3],
+                        value: volumeStr,
+                        trend: dashboardStats.volume24hTrend,
+                        isPositive: !dashboardStats.volume24hTrend.startsWith('-')
+                    };
+
                     return next;
                 });
             } catch (error) {
@@ -136,7 +161,7 @@ export function KPICards() {
         };
 
         loadData();
-    }, []);
+    }, [t]);
 
     const handleCardClick = (kpiId: string) => {
         if (kpiId === 'totalProfit') {

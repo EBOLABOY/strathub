@@ -14,11 +14,12 @@ import clsx from "clsx";
 
 // Valid V1 GridStrategyConfig
 const DEFAULT_CONFIG = `{
+  "schemaVersion": 2,
   "trigger": {
     "gridType": "percent",
     "basePriceType": "current",
-    "riseSell": "0.2",
-    "fallBuy": "0.2"
+    "riseSell": "0.02",
+    "fallBuy": "0.02"
   },
   "order": {
     "orderType": "limit"

@@ -93,9 +93,18 @@ interface AccountDTO {
 
 ---
 
-## 3. 实时推送（V2）
+## 3. 实时推送（V1）
 
-V1 **不实现** SSE/WebSocket 推送；需要前端实时性时先使用轮询（V1）或后续接入 SSE（V2）。
+V1 已实现最小化 SSE（Server-Sent Events），用于前端实时刷新 bot 状态/日志。
+
+| 端点 | 方法 | 描述 | Auth |
+|------|------|------|------|
+| `/api/sse?topics=botStatus,botLog&token=<JWT>` | GET | SSE 订阅 | token (query) |
+| `/api/sse/status` | GET | 连接状态（调试用） | 无 |
+
+说明：
+- 浏览器 `EventSource` 无法设置自定义 Header，因此使用 `token` query 传 JWT（注意 URL 日志/代理泄漏风险）。
+- `topics` 以逗号分隔，默认 `botStatus`。
 
 ---
 
@@ -118,10 +127,20 @@ V1 **不实现** SSE/WebSocket 推送；需要前端实时性时先使用轮询�
 | `KILL_SWITCH_LOCKED` | 423 | Kill Switch 已启用，禁止 start/resume |
 | `CONCURRENT_MODIFICATION` | 409 | 乐观锁失败 / 并发修改 |
 | `EXCHANGE_UNAVAILABLE` | 503 | 交易所数据不可用（market/ticker 获取失败） |
+| `EXCHANGE_NOT_SUPPORTED` | 400 | 交易所不在支持列表 |
+| `TESTNET_NOT_SUPPORTED` | 400 | 该交易所不支持 Testnet |
+| `MISSING_PASSPHRASE` | 400 | OKX 缺少 passphrase |
 | `EXCHANGE_ACCOUNT_NOT_FOUND` | 404 | Exchange Account 不存在或不属于当前用户 |
 | `EXCHANGE_ACCOUNT_ALREADY_EXISTS` | 409 | 同用户/交易所/名称账户已存在 |
 | `ACCOUNT_HAS_BOTS` | 409 | 账户下存在 bots，禁止删除 |
 | `MAINNET_ACCOUNT_FORBIDDEN` | 403 | 未配置 `CREDENTIALS_ENCRYPTION_KEY`，禁止创建 mainnet 账户 |
+| `MAINNET_TRADING_DISABLED` | 403 | 未开启 `ALLOW_MAINNET_TRADING`，禁止访问 mainnet |
+| `EMAIL_EXISTS` | 409 | Email 已存在 |
+| `TEMPLATE_NOT_FOUND` | 404 | Template 不存在 |
+| `INVALID_BOT_STATUS` | 400 | Bot 状态不允许该操作 |
+| `CONFIG_NOT_FOUND` | 404 | Config 不存在 |
+| `HISTORY_NOT_FOUND` | 404 | History 记录不存在 |
+| `METRICS_COLLECT_FAILED` | 500 | Metrics 收集失败 |
 | `INTERNAL_ERROR` | 500 | 内部错误 |
 
 ---

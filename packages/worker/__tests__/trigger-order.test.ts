@@ -56,7 +56,80 @@ const gridConfigWithBounds = JSON.stringify({
         riseSell: '5',
         fallBuy: '5',
         priceMin: '50',
-        priceMax: '150',
+    },
+    order: { orderType: 'limit' },
+    sizing: {
+        amountMode: 'amount',
+        gridSymmetric: true,
+        symmetric: { orderQuantity: '10' },
+    },
+});
+
+const gridConfigPercentSizing = JSON.stringify({
+    trigger: {
+        gridType: 'percent',
+        basePriceType: 'manual',
+        basePrice: '100',
+        riseSell: '5',
+        fallBuy: '5',
+    },
+    order: { orderType: 'limit' },
+    sizing: {
+        amountMode: 'percent',
+        gridSymmetric: true,
+        symmetric: { orderQuantity: '10' }, // 10% of free quote
+    },
+});
+
+const gridConfigV2WithPositionCap = JSON.stringify({
+    schemaVersion: 2,
+    trigger: {
+        gridType: 'percent',
+        basePriceType: 'manual',
+        basePrice: '100',
+        riseSell: '0.05',
+        fallBuy: '0.05',
+    },
+    order: { orderType: 'limit' },
+    sizing: {
+        amountMode: 'amount',
+        gridSymmetric: true,
+        symmetric: { orderQuantity: '10' },
+    },
+    position: {
+        maxPositionPercent: '0.5', // 50%
+    },
+});
+
+const gridConfigV2PullbackSell = JSON.stringify({
+    schemaVersion: 2,
+    trigger: {
+        gridType: 'percent',
+        basePriceType: 'manual',
+        basePrice: '100',
+        riseSell: '0.05',
+        fallBuy: '0.05',
+        enablePullbackSell: true,
+        pullbackSellPercent: '0.01', // 1% pullback from peak
+    },
+    order: { orderType: 'limit' },
+    sizing: {
+        amountMode: 'amount',
+        gridSymmetric: true,
+        symmetric: { orderQuantity: '10' },
+    },
+});
+
+const gridConfigV2ReboundBuy = JSON.stringify({
+    schemaVersion: 2,
+    trigger: {
+        gridType: 'percent',
+        basePriceType: 'manual',
+        basePrice: '100',
+        riseSell: '0.05',
+        fallBuy: '0.05',
+        enableReboundBuy: true,
+        reboundBuyPercent: '0.01', // 1% rebound from trough
     },
     order: { orderType: 'limit' },
     sizing: {
@@ -542,6 +615,7 @@ describe('Trigger/Order Loop 验收测试', () => {
 
         const updatedBot = await prisma.bot.findUnique({ where: { id: bot.id } });
         expect(updatedBot!.status).toBe('ERROR');
+        expect(updatedBot!.statusVersion).toBe(1);
         expect(updatedBot!.lastError).toContain('BELOW_MIN_AMOUNT');
 
         // 不应创建订单
@@ -580,6 +654,7 @@ describe('Trigger/Order Loop 验收测试', () => {
 
         const updatedBot = await prisma.bot.findUnique({ where: { id: bot.id } });
         expect(updatedBot!.status).toBe('ERROR');
+        expect(updatedBot!.statusVersion).toBe(1);
         expect(updatedBot!.lastError).toContain('BELOW_MIN_NOTIONAL');
 
         // 不应创建订单
@@ -587,7 +662,7 @@ describe('Trigger/Order Loop 验收测试', () => {
         expect(orders.length).toBe(0);
     });
 
-    it('should NOT create order when price is out of bounds (BoundsGate)', async () => {
+    it('should NOT create order when price is below priceMin (BoundsGate)', async () => {
         const bot = await prisma.bot.create({
             data: {
                 userId: testUserId,
@@ -604,19 +679,135 @@ describe('Trigger/Order Loop 验收测试', () => {
         simulator.setBalance('BOUND', '100');
         const executor = createSimulatorExecutor(simulator);
 
-        // 价格 200：超过 priceMax=150，即使超过卖出触发线也必须跳过
-        await processTriggerOrder(bot.id, { executor, tickerPrice: '200' });
+        // 价格 40：低于 priceMin=50，即使触发买入也必须跳过
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '40' });
         expect(executor.getCreateOrderCallCount()).toBe(0);
 
         const ordersAfterBlocked = await prisma.order.findMany({ where: { botId: bot.id } });
         expect(ordersAfterBlocked.length).toBe(0);
 
-        // 价格回到 140：在范围内且 >= sellTrigger(105)，允许下单
-        await processTriggerOrder(bot.id, { executor, tickerPrice: '140' });
+        // 价格回到 90：在范围内且 <= buyTrigger(95)，允许下单
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '90' });
         expect(executor.getCreateOrderCallCount()).toBe(1);
 
         const ordersAfterAllowed = await prisma.order.findMany({ where: { botId: bot.id } });
         expect(ordersAfterAllowed.length).toBe(1);
+    });
+
+    it('should use executor balance for amountMode=percent sizing', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'PCT/USDT',
+                configJson: gridConfigPercentSizing,
+                status: 'WAITING_TRIGGER',
+            },
+        });
+
+        const simulator = new ExchangeSimulator();
+        simulator.setBalance('USDT', '1000'); // free quote
+        simulator.setBalance('PCT', '0');
+        const executor = createSimulatorExecutor(simulator);
+
+        // last=90 triggers BUY (buyTrigger=95)
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '90' });
+
+        expect(executor.getCreateOrderCallCount()).toBe(1);
+        const orders = await prisma.order.findMany({ where: { botId: bot.id } });
+        expect(orders.length).toBe(1);
+        expect(parseFloat(orders[0]!.amount)).toBeGreaterThan(0);
+    });
+
+    it('should block BUY when position exceeds maxPositionPercent (schemaVersion=2)', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'POS/USDT',
+                configJson: gridConfigV2WithPositionCap,
+                status: 'WAITING_TRIGGER',
+            },
+        });
+
+        const simulator = new ExchangeSimulator();
+        // 100% base position (quote=0), should block buys when max=50%
+        simulator.setBalance('POS', '10');
+        simulator.setBalance('USDT', '0');
+        const executor = createSimulatorExecutor(simulator);
+
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '90' });
+        expect(executor.getCreateOrderCallCount()).toBe(0);
+        const orders = await prisma.order.findMany({ where: { botId: bot.id } });
+        expect(orders.length).toBe(0);
+    });
+
+    it('should require pullback confirmation before SELL when enabled (schemaVersion=2)', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'PB/USDT',
+                configJson: gridConfigV2PullbackSell,
+                status: 'WAITING_TRIGGER',
+                statusVersion: 10,
+            },
+        });
+
+        const simulator = new ExchangeSimulator();
+        simulator.setBalance('PB', '100');
+        simulator.setBalance('USDT', '0');
+        const executor = createSimulatorExecutor(simulator);
+
+        // First tick: cross sellTrigger (>=105) -> arm, no order.
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '110' });
+        expect(executor.getCreateOrderCallCount()).toBe(0);
+
+        const afterArm = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterArm!.status).toBe('WAITING_TRIGGER');
+        expect(afterArm!.statusVersion).toBe(10);
+
+        // Second tick: pullback from peak 110 by 1% -> threshold 108.9, so 108 triggers sell.
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '108' });
+        expect(executor.getCreateOrderCallCount()).toBe(1);
+
+        const after = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(after!.status).toBe('RUNNING');
+        expect(after!.statusVersion).toBe(11);
+    });
+
+    it('should require rebound confirmation before BUY when enabled (schemaVersion=2)', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'RB/USDT',
+                configJson: gridConfigV2ReboundBuy,
+                status: 'WAITING_TRIGGER',
+                statusVersion: 20,
+            },
+        });
+
+        const simulator = new ExchangeSimulator();
+        simulator.setBalance('USDT', '10000');
+        simulator.setBalance('RB', '0');
+        const executor = createSimulatorExecutor(simulator);
+
+        // First tick: cross buyTrigger (<=95) -> arm, no order.
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '90' });
+        expect(executor.getCreateOrderCallCount()).toBe(0);
+
+        const afterArm = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterArm!.status).toBe('WAITING_TRIGGER');
+        expect(afterArm!.statusVersion).toBe(20);
+
+        // Second tick: rebound from trough 90 by 1% -> threshold 90.9, so 91 triggers buy.
+        await processTriggerOrder(bot.id, { executor, tickerPrice: '91' });
+        expect(executor.getCreateOrderCallCount()).toBe(1);
+
+        const after = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(after!.status).toBe('RUNNING');
+        expect(after!.statusVersion).toBe(21);
     });
 
     it('should transition bot to ERROR after max retries on rate limit (ACC-EX-002)', async () => {

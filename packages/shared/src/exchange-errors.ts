@@ -61,6 +61,20 @@ export class ExchangeUnavailableError extends ExchangeError {
     }
 }
 
+export class AuthError extends ExchangeError {
+    constructor(message = 'Authentication failed', cause?: unknown) {
+        super(message, 'AUTH', false, undefined, cause);
+        this.name = 'AuthError';
+    }
+}
+
+export class BadRequestError extends ExchangeError {
+    constructor(message = 'Bad request', cause?: unknown) {
+        super(message, 'BAD_REQUEST', false, undefined, cause);
+        this.name = 'BadRequestError';
+    }
+}
+
 export class DuplicateOrderError extends ExchangeError {
     constructor(clientOrderId: string, cause?: unknown) {
         super(`Duplicate clientOrderId: ${clientOrderId}`, 'DUPLICATE_ORDER', false, undefined, cause);

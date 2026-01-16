@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
+import { FEATURED_EXCHANGES, isFeaturedExchange, supportsTestnet, type SupportedExchangeId } from "@crypto-strategy-hub/shared";
 import {
     Settings, Wallet, Plus, Trash2, Pencil, Loader2, AlertCircle,
     CheckCircle, Shield, AlertTriangle
@@ -40,6 +41,7 @@ export default function SettingsAccountsPage() {
         exchange: 'binance',
         apiKey: '',
         secret: '',
+        passphrase: '',
         isTestnet: true,
     });
 
@@ -59,7 +61,7 @@ export default function SettingsAccountsPage() {
         setFormMode("create");
         setEditingAccountId(null);
         setFormError(null);
-        setFormData({ name: '', exchange: 'binance', apiKey: '', secret: '', isTestnet: true });
+        setFormData({ name: '', exchange: 'binance', apiKey: '', secret: '', passphrase: '', isTestnet: true });
         setFormOpen(true);
     };
 
@@ -69,9 +71,10 @@ export default function SettingsAccountsPage() {
         setFormError(null);
         setFormData({
             name: account.name,
-            exchange: account.exchange,
+            exchange: account.exchange.toLowerCase(),
             apiKey: "",
             secret: "",
+            passphrase: "",
             isTestnet: account.isTestnet,
         });
         setFormOpen(true);
@@ -106,7 +109,24 @@ export default function SettingsAccountsPage() {
 
         try {
             if (formMode === "create") {
-                await api.accounts.create(formData);
+                const exchange = formData.exchange.toLowerCase();
+                const apiKey = formData.apiKey.trim();
+                const secret = formData.secret.trim();
+                const passphrase = formData.passphrase.trim();
+
+                if (exchange === "okx" && passphrase.length === 0) {
+                    setFormError(t("errors.passphraseRequired"));
+                    return;
+                }
+
+                await api.accounts.create({
+                    name: formData.name,
+                    exchange: exchange as SupportedExchangeId,
+                    apiKey,
+                    secret,
+                    ...(exchange === "okx" && passphrase.length > 0 ? { passphrase } : {}),
+                    isTestnet: supportsTestnet(exchange) ? formData.isTestnet : false,
+                });
             } else {
                 if (!editingAccountId) {
                     setFormError(t("errors.update"));
@@ -115,8 +135,10 @@ export default function SettingsAccountsPage() {
 
                 const apiKey = formData.apiKey.trim();
                 const secret = formData.secret.trim();
-                const updatingCredentials = apiKey.length > 0 || secret.length > 0;
-                if (updatingCredentials && (apiKey.length === 0 || secret.length === 0)) {
+                const passphrase = formData.passphrase.trim();
+                const updatingApiKeySecret = apiKey.length > 0 || secret.length > 0;
+
+                if (updatingApiKeySecret && (apiKey.length === 0 || secret.length === 0)) {
                     setFormError(t("errors.credentialsPair"));
                     return;
                 }
@@ -124,13 +146,14 @@ export default function SettingsAccountsPage() {
                 await api.accounts.update(editingAccountId, {
                     name: formData.name,
                     isTestnet: formData.isTestnet,
-                    ...(updatingCredentials ? { apiKey, secret } : {}),
+                    ...(updatingApiKeySecret ? { apiKey, secret } : {}),
+                    ...(passphrase.length > 0 ? { passphrase } : {}),
                 });
             }
 
             closeForm();
             setEditingAccountId(null);
-            setFormData({ name: '', exchange: 'binance', apiKey: '', secret: '', isTestnet: true });
+            setFormData({ name: '', exchange: 'binance', apiKey: '', secret: '', passphrase: '', isTestnet: true });
             await fetchAccounts();
         } catch (err: any) {
             setFormError(
@@ -299,15 +322,27 @@ export default function SettingsAccountsPage() {
                                 <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.exchange")}</label>
                                 <select
                                     value={formData.exchange}
-                                    onChange={(e) => setFormData({ ...formData, exchange: e.target.value })}
+                                    onChange={(e) => {
+                                        const nextExchange = e.target.value;
+                                        const canTestnet = supportsTestnet(nextExchange);
+                                        setFormData({
+                                            ...formData,
+                                            exchange: nextExchange,
+                                            isTestnet: canTestnet ? formData.isTestnet : false,
+                                        });
+                                    }}
                                     disabled={formMode === "edit"}
                                     className={clsx(
                                         "w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500",
                                         formMode === "edit" && "bg-slate-50 text-slate-500 cursor-not-allowed"
                                     )}
                                 >
-                                    <option value="binance">Binance</option>
-                                    <option value="okx">OKX</option>
+                                    {formMode === "edit" && !isFeaturedExchange(formData.exchange) && (
+                                        <option value={formData.exchange}>{`${formData.exchange.toUpperCase()} (Legacy)`}</option>
+                                    )}
+                                    {FEATURED_EXCHANGES.map((id) => (
+                                        <option key={id} value={id}>{t(`exchanges.${id}` as any)}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -338,12 +373,37 @@ export default function SettingsAccountsPage() {
                                 />
                             </div>
 
+                            {formData.exchange.toLowerCase() === "okx" && (
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.passphrase")}</label>
+                                    <input
+                                        type="password"
+                                        value={formData.passphrase}
+                                        onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
+                                        placeholder={t("placeholders.passphrase")}
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
+                                        required={formMode === "create"}
+                                    />
+                                    {formMode === "edit" && (
+                                        <p className="text-xs text-slate-400 mt-1">{t("editPassphraseHint")}</p>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
                                 <input
                                     type="checkbox"
                                     id="isTestnet"
                                     checked={formData.isTestnet}
-                                    onChange={(e) => setFormData({ ...formData, isTestnet: e.target.checked })}
+                                    disabled={formMode === "create" && !supportsTestnet(formData.exchange)}
+                                    onChange={(e) => {
+                                        const next = e.target.checked;
+                                        if (next && !supportsTestnet(formData.exchange)) {
+                                            setFormError(t("errors.testnetNotSupported"));
+                                            return;
+                                        }
+                                        setFormData({ ...formData, isTestnet: next });
+                                    }}
                                     className="w-4 h-4 text-teal-600"
                                 />
                                 <label htmlFor="isTestnet" className="flex-1">

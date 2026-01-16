@@ -9,9 +9,11 @@
  * - config: 配置变更
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { prisma } from '@crypto-strategy-hub/database';
-import jwt from 'jsonwebtoken';
+import { createApiError } from '../middleware/error-handler.js';
+import { verifyJwtToken } from '../middleware/auth-guard.js';
 
 export const sseRouter = Router();
 
@@ -28,6 +30,10 @@ const clients = new Map<string, SSEClient>();
 
 // 心跳间隔（毫秒）
 const HEARTBEAT_INTERVAL = 30000;
+const sseQuerySchema = z.object({
+    token: z.preprocess((value) => (Array.isArray(value) ? value[0] : value), z.string().optional()),
+    topics: z.preprocess((value) => (Array.isArray(value) ? value[0] : value), z.string().optional()),
+});
 
 // 发送 SSE 事件到指定客户端
 function sendEvent(client: SSEClient, type: string, data: unknown): void {
@@ -57,113 +63,109 @@ export function broadcastEvent(topic: string, data: unknown, userId?: string): v
 }
 
 // SSE 连接端点
-sseRouter.get('/', async (req: Request, res: Response) => {
-    // 验证 token
-    const token = req.query['token'] as string;
-    if (!token) {
-        res.status(401).json({ error: 'Missing token' });
-        return;
-    }
-
-    let userId: string;
+sseRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const secret = process.env['JWT_SECRET'] || 'dev-secret';
-        const decoded = jwt.verify(token, secret) as { userId: string };
-        userId = decoded.userId;
-    } catch (err) {
-        res.status(401).json({ error: 'Invalid token' });
-        return;
-    }
+        const parsed = sseQuerySchema.parse(req.query);
+        const token = parsed.token?.trim();
+        const topicsParam = parsed.topics;
 
-    // 验证用户存在
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-        res.status(401).json({ error: 'User not found' });
-        return;
-    }
-
-    // 解析订阅的 topics
-    const topicsParam = req.query['topics'] as string || 'botStatus';
-    const topics = topicsParam.split(',').filter(Boolean);
-
-    // 设置 SSE 响应头
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Nginx 兼容
-    res.flushHeaders();
-
-    // 创建客户端记录
-    const clientId = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const client: SSEClient = {
-        id: clientId,
-        userId,
-        topics,
-        res,
-        lastHeartbeat: Date.now(),
-    };
-    clients.set(clientId, client);
-
-    // console.log(`[SSE] Client connected: ${clientId}, topics: ${topics.join(',')}`);
-
-    // 发送初始连接确认
-    sendEvent(client, 'connected', { clientId, topics });
-
-    // 发送当前 Bot 状态（如果订阅了 botStatus）
-    if (topics.includes('botStatus')) {
-        try {
-            const bots = await prisma.bot.findMany({
-                where: { userId },
-                select: {
-                    id: true,
-                    status: true,
-                    statusVersion: true,
-                    runId: true,
-                    lastError: true,
-                },
-            });
-
-            for (const bot of bots) {
-                sendEvent(client, 'botStatus', {
-                    botId: bot.id,
-                    status: bot.status,
-                    statusVersion: bot.statusVersion,
-                    runId: bot.runId,
-                    lastError: bot.lastError,
-                });
-            }
-        } catch (err) {
-            console.error('[SSE] Failed to send initial bot statuses:', err);
+        if (!token) {
+            throw createApiError('Missing token', 401, 'UNAUTHORIZED');
         }
-    }
 
-    // 心跳定时器
-    const heartbeatTimer = setInterval(() => {
-        try {
-            res.write(': heartbeat\n\n');
-            client.lastHeartbeat = Date.now();
-        } catch (err) {
-            console.error(`[SSE] Heartbeat failed for ${clientId}:`, err);
+        const userId = verifyJwtToken(token).userId;
+
+        // 验证用户存在
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            throw createApiError('User not found', 401, 'USER_NOT_FOUND');
+        }
+
+        // 解析订阅的 topics
+        const rawTopics = (topicsParam ?? 'botStatus').split(',').map((t) => t.trim()).filter(Boolean);
+        const topics = rawTopics.length > 0 ? rawTopics : ['botStatus'];
+
+        // 设置 SSE 响应头
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no'); // Nginx 兼容
+        res.flushHeaders();
+
+        // 创建客户端记录
+        const clientId = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const client: SSEClient = {
+            id: clientId,
+            userId,
+            topics,
+            res,
+            lastHeartbeat: Date.now(),
+        };
+        clients.set(clientId, client);
+
+        // console.log(`[SSE] Client connected: ${clientId}, topics: ${topics.join(',')}`);
+
+        // 发送初始连接确认
+        sendEvent(client, 'connected', { clientId, topics });
+
+        // 发送当前 Bot 状态（如果订阅了 botStatus）
+        if (topics.includes('botStatus')) {
+            try {
+                const bots = await prisma.bot.findMany({
+                    where: { userId },
+                    select: {
+                        id: true,
+                        status: true,
+                        statusVersion: true,
+                        runId: true,
+                        lastError: true,
+                    },
+                });
+
+                for (const bot of bots) {
+                    sendEvent(client, 'botStatus', {
+                        botId: bot.id,
+                        status: bot.status,
+                        statusVersion: bot.statusVersion,
+                        runId: bot.runId,
+                        lastError: bot.lastError,
+                    });
+                }
+            } catch (err) {
+                console.error('[SSE] Failed to send initial bot statuses:', err);
+            }
+        }
+
+        // 心跳定时器
+        const heartbeatTimer = setInterval(() => {
+            try {
+                res.write(': heartbeat\n\n');
+                client.lastHeartbeat = Date.now();
+            } catch (err) {
+                console.error(`[SSE] Heartbeat failed for ${clientId}:`, err);
+                clearInterval(heartbeatTimer);
+                clients.delete(clientId);
+            }
+        }, HEARTBEAT_INTERVAL);
+
+        // 连接关闭处理
+        req.on('close', () => {
+            // console.log(`[SSE] Client disconnected: ${clientId}`);
             clearInterval(heartbeatTimer);
             clients.delete(clientId);
-        }
-    }, HEARTBEAT_INTERVAL);
+        });
 
-    // 连接关闭处理
-    req.on('close', () => {
-        // console.log(`[SSE] Client disconnected: ${clientId}`);
-        clearInterval(heartbeatTimer);
-        clients.delete(clientId);
-    });
-
-    req.on('error', (err: NodeJS.ErrnoException) => {
-        // ECONNRESET 是正常的连接关闭，只在调试时记录
-        if (err.code !== 'ECONNRESET') {
-            console.error(`[SSE] Client error ${clientId}:`, err);
-        }
-        clearInterval(heartbeatTimer);
-        clients.delete(clientId);
-    });
+        req.on('error', (err: NodeJS.ErrnoException) => {
+            // ECONNRESET 是正常的连接关闭，只在调试时记录
+            if (err.code !== 'ECONNRESET') {
+                console.error(`[SSE] Client error ${clientId}:`, err);
+            }
+            clearInterval(heartbeatTimer);
+            clients.delete(clientId);
+        });
+    } catch (error) {
+        next(error);
+    }
 });
 
 // 获取连接状态（调试用）

@@ -45,11 +45,16 @@
     "KILL_SWITCH_LOCKED": "Kill switch is enabled",
     "CONCURRENT_MODIFICATION": "Concurrent modification, please retry",
     "EXCHANGE_UNAVAILABLE": "Exchange unavailable",
+    "EXCHANGE_NOT_SUPPORTED": "Exchange not supported",
     "EXCHANGE_ACCOUNT_NOT_FOUND": "Exchange account not found",
     "EXCHANGE_ACCOUNT_ALREADY_EXISTS": "Exchange account already exists",
+    "MISSING_PASSPHRASE": "OKX requires a passphrase",
+    "MAINNET_TRADING_DISABLED": "Mainnet access is disabled (set ALLOW_MAINNET_TRADING=true)",
+    "NO_ACCOUNT": "No exchange account found",
+    "MISSING_SYMBOL": "Symbol is required",
     "ACCOUNT_HAS_BOTS": "Account has bots and cannot be deleted",
     "INVALID_STATE_FOR_DELETE": "Cannot delete bot in the current state",
-    "MAINNET_ACCOUNT_FORBIDDEN": "Mainnet accounts are not allowed in this version",
+    "MAINNET_ACCOUNT_FORBIDDEN": "Mainnet accounts require encryption (set CREDENTIALS_ENCRYPTION_KEY)",
     "INTERNAL_ERROR": "Internal error"
   },
   "previewIssues": {
@@ -77,6 +82,8 @@
     "signIn": "Sign In",
     "createAccount": "Create Account",
     "detailedInstructions": "Detailed instructions for Testnet access",
+    "registerLink": "Register a new account",
+    "noAccount": "Don't have an account?",
     "placeholders": {
       "email": "name@company.com",
       "password": "At least 8 characters"
@@ -86,6 +93,18 @@
       "invalidCredentials": "Invalid credentials",
       "failedConnect": "Failed to connect to server",
       "emailPasswordRequired": "Email and password are required"
+    }
+  },
+  "register": {
+    "title": "Create account",
+    "subtitle": "Start your {brand} journey",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "submit": "Register",
+    "hasAccount": "Already have an account? Sign in",
+    "errors": {
+      "passwordsNotMatch": "Passwords do not match"
     }
   },
   "dashboard": {
@@ -122,7 +141,8 @@
     "available": "Available",
     "locked": "Locked",
     "total": "Total",
-    "stablecoinsOnly": "Total assets shows stablecoin value only"
+    "stablecoinsOnly": "Total assets shows stablecoin value only",
+    "notImplemented": "Coming Soon"
   },
   "chart": {
     "title": "Portfolio Performance",
@@ -133,7 +153,10 @@
       "w1": "1W",
       "m1": "1M",
       "y1": "1Y"
-    }
+    },
+    "loading": "Loading...",
+    "noData": "No data available",
+    "value": "Value"
   },
   "topology": {
     "title": "System Topology",
@@ -152,9 +175,12 @@
     "emptyCta": "Deploy your first bot",
     "metrics": {
       "pnlTotal": "PnL (Total)",
+      "pnl24h": "PnL (24h)",
       "status": "Status",
+      "runtime": "Runtime",
       "na": "N/A"
     },
+    "viewDetails": "View details",
     "newCard": "Deploy New Strategy"
   },
   "botNew": {
@@ -171,6 +197,74 @@
     "symbolPlaceholder": "e.g. BNB/USDT",
     "configLabel": "Configuration (JSON)",
     "submit": "Create Draft Bot",
+    "modeLabel": "Mode",
+    "modeSimple": "Simple",
+    "modeAdvanced": "Advanced (JSON)",
+    "form": {
+      "triggerCondition": "Trigger conditions",
+      "priceRange": "Price range",
+      "rise": "Rise",
+      "fall": "Fall",
+      "callbackSell": "Pullback sell",
+      "bounceBuy": "Rebound buy",
+      "triggerDelta": "Trigger delta (%)",
+      "symmetricToggle": "Symmetric grid",
+      "asymmetricToggle": "Manual",
+      "triggerBase": "Trigger base price",
+      "currentPrice": "Current price",
+      "manualPrice": "Manual price",
+      "orderSettings": "Order settings",
+      "orderType": "Order type",
+      "limitOrder": "Limit",
+      "marketOrder": "Market",
+      "entryPriceSource": "Entry execution price",
+      "entryPriceTrigger": "Strategy trigger price",
+      "entryPriceOrderbook": "Order book (Bid/Ask)",
+      "entryBookLevel": "Order book level",
+      "entryBookLevelHint": "Buy uses ask1-ask5; sell uses bid1-bid5.",
+      "amountType": "Order sizing",
+      "byQuantity": "By quantity (Base)",
+      "byAmount": "By amount (Quote)",
+      "gridSettings": "Grid settings",
+      "gridCount": "Grid count",
+      "amountPerGrid": "Amount per grid (USDT)",
+      "quantityPerGrid": "Quantity per grid (COIN)",
+      "maxPosition": "Max position",
+      "minPosition": "Min base position",
+      "advancedSettings": "Advanced settings",
+      "gridType": "Grid type",
+      "typePercent": "Percent (%)",
+      "typePrice": "Price (Abs)",
+      "gridStrategyTitle": "Core strategy",
+      "gridStrategySubtitle": "Define how the grid reacts to market moves",
+      "triggerLogic": "Trigger logic",
+      "symmetricMode": "Symmetric mode",
+      "manualMode": "Independent mode",
+      "sellHigher": "Sell higher",
+      "buyLower": "Buy lower",
+      "gridStep": "Grid step",
+      "trailingSell": "Trailing sell",
+      "trailingBuy": "Trailing buy",
+      "callback": "Pullback",
+      "rebound": "Rebound",
+      "positionMoneyTitle": "Capital & position",
+      "positionMoneySubtitle": "Control per-order size and position cap",
+      "advancedProtection": "Advanced risk controls",
+      "stopLossLabel": "Stop-loss price (floor)",
+      "takeProfitLabel": "Take-profit price (ceiling)",
+      "noStopLoss": "No stop-loss",
+      "noLimit": "No limit",
+      "autoExpiration": "Expiry",
+      "validityHint": "Default 365 days",
+      "summaryTemplate": "Trades every {step}{unit} move.",
+      "summaryPullback": "Sell requires a {percent}% pullback.",
+      "summaryRebound": "Buy requires a {percent}% rebound.",
+      "monitorHours": "Monitoring hours",
+      "monitorHoursHint": "Crypto markets are 24/7, no need to set",
+      "clearOnStop": "Position on stop",
+      "clearOnStopHint": "Sell all holdings when stopped",
+      "summary": "The strategy distributes {count} grids between +{rise}% and -{fall}% around the base price."
+    },
     "testAccountName": "Test Account",
     "errors": {
       "loadAccounts": "Failed to load accounts",
@@ -196,6 +290,7 @@
     "estNetProfit": "Est. Net Profit",
     "orderCount": "Order Count",
     "runId": "Run ID",
+    "status": "Status",
     "statusVersion": "Status Version",
     "lastError": "Last Error",
     "none": "None",
@@ -204,22 +299,46 @@
     "actions": {
       "failed": "Failed to {action} bot",
       "previewFailed": "Failed to preview bot",
-      "deleteFailed": "Failed to delete bot"
+      "deleteFailed": "Failed to delete bot",
+      "editSaveFailed": "Failed to save configuration"
     },
+    "edit": "Edit",
+    "editModalTitle": "Edit Configuration",
+    "editModalSubtitle": "Modify grid parameters and save",
+    "editModeSimple": "Simple",
+    "editModeAdvanced": "Advanced",
+    "saveConfig": "Save",
     "delete": "Delete",
     "deleteModalTitle": "Delete Bot",
     "deleteModalSubtitle": "This action cannot be undone",
     "cancel": "Cancel",
-    "confirmDelete": "Delete"
+    "confirmDelete": "Delete",
+    "loadFailed": "Failed to load bot",
+    "backToBots": "Back to bots",
+    "realtimeConnected": "Realtime connected",
+    "pollingMode": "Polling mode",
+    "tradeHistory": "Trade history",
+    "tradeTime": "Time",
+    "tradeSide": "Side",
+    "tradePrice": "Price",
+    "tradeAmount": "Amount",
+    "tradeFee": "Fee",
+    "noTrades": "No trades"
   },
   "accounts": {
     "title": "Exchange Accounts",
     "subtitle": "Manage your exchange API connections",
     "add": "Add Account",
     "securityTitle": "V1 Security Notice",
-    "securityBody": "Credentials are stored as plaintext in this version. Only use testnet API keys. Mainnet accounts require encryption (not yet enabled).",
+    "securityBody": "Testnet accounts may store credentials as plaintext (for dev convenience). Mainnet accounts require encryption (set CREDENTIALS_ENCRYPTION_KEY).",
     "emptyTitle": "No exchange accounts yet.",
     "emptySubtitle": "Click \"Add Account\" to connect your first exchange.",
+    "exchanges": {
+      "binance": "Binance",
+      "okx": "OKX",
+      "huobi": "Huobi",
+      "htx": "HTX"
+    },
     "network": {
       "testnet": "Testnet",
       "mainnet": "Mainnet"
@@ -233,16 +352,19 @@
       "name": "Name",
       "exchange": "Exchange",
       "apiKey": "API Key",
-      "secret": "Secret"
+      "secret": "Secret",
+      "passphrase": "Passphrase"
     },
     "placeholders": {
       "name": "e.g., My Testnet Account",
       "apiKey": "Enter API key",
-      "secret": "Enter secret key"
+      "secret": "Enter secret key",
+      "passphrase": "Enter passphrase (required for OKX)"
     },
     "editCredentialsHint": "Leave blank to keep current credentials",
+    "editPassphraseHint": "Leave blank to keep current passphrase",
     "testnetLabel": "Testnet Account",
-    "testnetHint": "Mainnet accounts require encryption (not available in V1)",
+    "testnetHint": "Mainnet accounts require encryption (set CREDENTIALS_ENCRYPTION_KEY)",
     "cancel": "Cancel",
     "create": "Create",
     "update": "Update",
@@ -254,6 +376,7 @@
       "create": "Failed to create account",
       "update": "Failed to update account",
       "credentialsPair": "API key and secret must be provided together",
+      "passphraseRequired": "OKX requires a passphrase",
       "delete": "Failed to delete account"
     }
   },

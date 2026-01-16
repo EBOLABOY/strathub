@@ -1,5 +1,5 @@
 
-import { Bot, BotStatus, GridConfig, PreviewResult, Balance } from "@crypto-strategy-hub/shared";
+import { Bot, BotStatus, GridConfig, PreviewResult, Balance, type SupportedExchangeId } from "@crypto-strategy-hub/shared";
 
 const API_BASE = '/api';
 
@@ -25,11 +25,21 @@ async function handleResponse<T>(res: Response): Promise<T> {
         } catch {
             errorData = { error: res.statusText, code: 'UNKNOWN' };
         }
-        // Backend returns { error: string, code: string }
-        // api.ts calls new ApiError(message, status, code)
         throw new ApiError(errorData.error || errorData.message || 'Unknown error', res.status, errorData.code);
     }
     return res.json();
+}
+
+async function handleVoidResponse(res: Response): Promise<void> {
+    if (!res.ok) {
+        let errorData;
+        try {
+            errorData = await res.json();
+        } catch {
+            errorData = { error: res.statusText, code: 'UNKNOWN' };
+        }
+        throw new ApiError(errorData.error || errorData.message || 'Unknown error', res.status, errorData.code);
+    }
 }
 
 export const api = {
@@ -60,7 +70,14 @@ export const api = {
             const res = await fetch(`${API_BASE}/accounts`, { headers: getHeaders() });
             return handleResponse<any[]>(res);
         },
-        async create(data: { name: string; exchange: string; apiKey: string; secret: string; isTestnet?: boolean }) {
+        async create(data: {
+            name: string;
+            exchange: SupportedExchangeId;
+            apiKey: string;
+            secret: string;
+            passphrase?: string;
+            isTestnet?: boolean;
+        }) {
             const res = await fetch(`${API_BASE}/accounts`, {
                 method: 'POST',
                 headers: getHeaders(),
@@ -70,7 +87,7 @@ export const api = {
         },
         async update(
             id: string,
-            data: { name?: string; apiKey?: string; secret?: string; isTestnet?: boolean }
+            data: { name?: string; apiKey?: string; secret?: string; passphrase?: string; isTestnet?: boolean }
         ) {
             const res = await fetch(`${API_BASE}/accounts/${id}`, {
                 method: 'PUT',
@@ -84,11 +101,7 @@ export const api = {
                 method: 'DELETE',
                 headers: getHeaders(),
             });
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({ error: res.statusText, code: 'UNKNOWN' }));
-                throw new ApiError(errorData.error || 'Failed to delete', res.status, errorData.code);
-            }
-            // 204 No Content
+            await handleVoidResponse(res);
         },
         async getBalance(id: string) {
             const res = await fetch(`${API_BASE}/accounts/${id}/balance`, { headers: getHeaders() });
@@ -147,7 +160,6 @@ export const api = {
                 const errorData = await res.json().catch(() => ({ error: res.statusText, code: 'UNKNOWN' }));
                 throw new ApiError(errorData.error || 'Failed to delete', res.status, errorData.code);
             }
-            // 204 No Content
         },
         async control(id: string, action: 'start' | 'stop' | 'pause' | 'resume') {
             const res = await fetch(`${API_BASE}/bots/${id}/${action}`, {
@@ -272,6 +284,16 @@ export const api = {
             const res = await fetch(`${API_BASE}/market/bot/${botId}/market-info`, { headers: getHeaders() });
             return handleResponse<MarketInfo>(res);
         }
+    },
+    dashboard: {
+        async getStats() {
+            const res = await fetch(`${API_BASE}/dashboard/stats`, { headers: getHeaders() });
+            return handleResponse<DashboardStats>(res);
+        },
+        async getChart(period: '1h' | '1d' | '1w' | '1m' | '1y' = '1d') {
+            const res = await fetch(`${API_BASE}/dashboard/chart?period=${period}`, { headers: getHeaders() });
+            return handleResponse<ChartDataPoint[]>(res);
+        }
     }
 };
 
@@ -331,4 +353,21 @@ export interface MarketInfo {
     amountPrecision: number;
     minAmount: string;
     minNotional: string;
+}
+
+export interface DashboardStats {
+    totalAssets: number;
+    totalAssetsTrend: string;
+    activeBots: number;
+    totalBots: number;
+    winRate: string;
+    winRateTrend: string;
+    volume24h: number;
+    volume24hTrend: string;
+    pnl24h: Record<string, number>;
+}
+
+export interface ChartDataPoint {
+    name: string;
+    value: number;
 }

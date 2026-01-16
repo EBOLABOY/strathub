@@ -490,4 +490,113 @@ describe('Reconcile Loop 验收测试', () => {
         const trade = await prisma.trade.findFirst({ where: { botId: bot.id, tradeId: 'trade-force-001' } });
         expect(trade!.clientOrderId).toBe(clientOrderId);
     });
+
+    it('should mark order CANCELED when it disappears from openOrders without full fill', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'CANCEL-TEST/USDT',
+                configJson: dummyConfig,
+                status: 'RUNNING',
+            },
+        });
+
+        const clientOrderId = generateClientOrderId(bot.id, 1);
+        const dbOrder = await prisma.order.create({
+            data: {
+                botId: bot.id,
+                exchange: 'binance',
+                symbol: bot.symbol,
+                clientOrderId,
+                exchangeOrderId: 'exc-cancel-001',
+                side: 'buy',
+                type: 'limit',
+                price: '100',
+                amount: '10',
+                status: 'NEW',
+            },
+        });
+
+        // Executor reports no open orders and no trades → local NEW order must be closed as CANCELED.
+        const mockExecutor = {
+            fetchOpenOrdersFull: async () => [],
+            fetchMyTrades: async () => [],
+        };
+
+        const result = await reconcileBot(bot.id, { executor: mockExecutor as any });
+        expect(result.success).toBe(true);
+
+        const updated = await prisma.order.findUnique({ where: { id: dbOrder.id } });
+        expect(updated!.status).toBe('CANCELED');
+    });
+
+    it('should use bot.exchangeAccount.exchange for order/trade upserts (not hardcode binance)', async () => {
+        const okxAccount = await prisma.exchangeAccount.create({
+            data: {
+                userId: testUserId,
+                exchange: 'okx',
+                name: `test-okx-${Date.now()}`,
+                encryptedCredentials: '{}',
+                isTestnet: true,
+            },
+        });
+
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: okxAccount.id,
+                symbol: 'OKX-PAIR/USDT',
+                configJson: dummyConfig,
+                status: 'RUNNING',
+            },
+        });
+
+        const clientOrderId = generateClientOrderId(bot.id, 1);
+        const mockExecutor = {
+            fetchOpenOrdersFull: async () => [
+                {
+                    id: 'exc-okx-001',
+                    symbol: bot.symbol,
+                    clientOrderId,
+                    side: 'buy',
+                    type: 'limit',
+                    price: '100',
+                    amount: '1',
+                    filledAmount: '0',
+                    status: 'NEW',
+                },
+            ],
+            fetchMyTrades: async () => [
+                {
+                    id: 'trade-okx-001',
+                    orderId: 'exc-okx-001',
+                    clientOrderId,
+                    symbol: bot.symbol,
+                    side: 'buy',
+                    price: '100',
+                    amount: '0.5',
+                    fee: '0.01',
+                    feeCurrency: 'USDT',
+                    timestamp: new Date().toISOString(),
+                },
+            ],
+        };
+
+        const result = await reconcileBot(bot.id, { executor: mockExecutor as any });
+        expect(result.success).toBe(true);
+
+        const order = await prisma.order.findUnique({
+            where: { exchange_clientOrderId: { exchange: 'okx', clientOrderId } },
+        });
+        expect(order).toBeTruthy();
+        expect(order!.exchange).toBe('okx');
+        expect(order!.status).toBe('PARTIALLY_FILLED');
+
+        const trade = await prisma.trade.findUnique({
+            where: { exchange_tradeId: { exchange: 'okx', tradeId: 'trade-okx-001' } },
+        });
+        expect(trade).toBeTruthy();
+        expect(trade!.exchange).toBe('okx');
+    });
 });

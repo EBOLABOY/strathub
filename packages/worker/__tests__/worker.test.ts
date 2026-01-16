@@ -237,6 +237,47 @@ describe('Worker C0 验收测试', () => {
             expect(afterBot!.status).toBe('RUNNING');
             expect(afterBot!.statusVersion).toBe(5);
         });
+
+        it('should move expired bots to STOPPING and skip risk-check', async () => {
+            const expiredConfig = JSON.stringify({
+                ...JSON.parse(autoCloseConfig),
+                lifecycle: { expiryDays: 1 },
+            });
+
+            const bot = await prisma.bot.create({
+                data: {
+                    userId: testUserId,
+                    exchangeAccountId: testExchangeAccountId,
+                    symbol: 'BNB/USDT',
+                    configJson: expiredConfig,
+                    status: 'RUNNING',
+                    statusVersion: 5,
+                    autoCloseReferencePrice: '600',
+                    startedAt: new Date('2026-01-01T00:00:00Z'),
+                    createdAt: new Date('2026-01-01T00:00:00Z'),
+                },
+            });
+
+            const checkFn = vi.fn(async () => ({ triggered: false }));
+
+            const deps: WorkerDeps = {
+                providerFactory: {
+                    async createProvider() {
+                        return normalProvider;
+                    },
+                },
+                checkAndTriggerAutoClose: checkFn,
+            };
+
+            const result = await runOnce(bot.id, deps);
+            expect(result.success).toBe(true);
+            expect(checkFn).not.toHaveBeenCalled();
+
+            const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+            expect(afterBot!.status).toBe('STOPPING');
+            expect(afterBot!.statusVersion).toBe(6);
+            expect(afterBot!.lastError).toContain('EXPIRED');
+        });
     });
 
     describe('tick', () => {

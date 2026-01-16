@@ -2,11 +2,12 @@
 
 import { Sidebar } from "@/components/Sidebar";
 import { GridPreviewChart } from "@/components/GridPreviewChart";
+import { GridConfigForm } from "@/components/GridConfigForm";
 import { useBot } from "@/lib/hooks";
 import { useParams } from "next/navigation";
 import { useRouter } from "@/i18n/navigation";
 import {
-    Bot, ArrowLeft, Play, Pause, Square, Trash2,
+    Bot, ArrowLeft, Play, Pause, Square, Trash2, Edit3,
     Activity, Clock, AlertTriangle, Loader2, Eye, ShieldCheck, XCircle, CheckCircle, Wifi, WifiOff
 } from "lucide-react";
 import clsx from 'clsx';
@@ -55,6 +56,12 @@ export function BotDetail() {
     // Delete State
     const [showDelete, setShowDelete] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    // Edit State
+    const [showEdit, setShowEdit] = useState(false);
+    const [editConfig, setEditConfig] = useState("");
+    const [editLoading, setEditLoading] = useState(false);
+    const [editMode, setEditMode] = useState<'simple' | 'advanced'>('simple');
 
     const formatStatus = (status: BotStatus | string) => {
         return tStatus.has(status as any) ? tStatus(status as any) : String(status);
@@ -144,6 +151,29 @@ export function BotDetail() {
         }
     };
 
+    const handleOpenEdit = () => {
+        // Initialize edit config from current bot config
+        setEditConfig(typeof bot?.configJson === 'string' ? bot.configJson : JSON.stringify(bot?.configJson, null, 2));
+        setShowEdit(true);
+        setActionError(null);
+    };
+
+    const handleSaveConfig = async () => {
+        setEditLoading(true);
+        setActionError(null);
+
+        try {
+            await api.bots.updateConfig(id, editConfig);
+            setShowEdit(false);
+            refresh();
+        } catch (err: any) {
+            const apiErrorMessage = getApiErrorMessage(err);
+            setActionError(apiErrorMessage || t("actions.editSaveFailed"));
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
     if (isLoading && !bot) {
         return (
             <div className="flex h-screen bg-page items-center justify-center">
@@ -226,6 +256,7 @@ export function BotDetail() {
                                 BotStatus.STOPPING,
                             ].includes(bot.status as any);
                             const canDelete = [BotStatus.DRAFT, BotStatus.STOPPED, BotStatus.ERROR].includes(bot.status as any);
+                            const canEdit = [BotStatus.DRAFT, BotStatus.PAUSED, BotStatus.STOPPED, BotStatus.ERROR].includes(bot.status as any);
                             const stopping = bot.status === BotStatus.STOPPING;
 
                             return (
@@ -287,6 +318,18 @@ export function BotDetail() {
                                         >
                                             {actionLoading === 'stop' || stopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
                                             {t("stop")}
+                                        </button>
+                                    )}
+
+                                    {/* Edit */}
+                                    {canEdit && (
+                                        <button
+                                            onClick={handleOpenEdit}
+                                            disabled={!!actionLoading || previewLoading || editLoading}
+                                            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-lg text-sm font-bold shadow-sm disabled:opacity-50 transition-all ml-2"
+                                        >
+                                            {editLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4" />}
+                                            {t("edit")}
                                         </button>
                                     )}
 
@@ -496,6 +539,71 @@ export function BotDetail() {
                             >
                                 {deleteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                 {t("confirmDelete")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showEdit && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">{t("editModalTitle")}</h2>
+                                <p className="text-sm text-slate-400 mt-1">{t("editModalSubtitle")}</p>
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditMode('simple')}
+                                    className={clsx(
+                                        "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                                        editMode === 'simple' ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                                    )}
+                                >
+                                    {t("editModeSimple")}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditMode('advanced')}
+                                    className={clsx(
+                                        "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                                        editMode === 'advanced' ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                                    )}
+                                >
+                                    {t("editModeAdvanced")}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {editMode === 'simple' ? (
+                                <GridConfigForm configJson={editConfig} onChange={setEditConfig} />
+                            ) : (
+                                <textarea
+                                    value={editConfig}
+                                    onChange={(e) => setEditConfig(e.target.value)}
+                                    className="w-full h-96 px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all font-mono text-xs leading-relaxed bg-slate-50"
+                                />
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => setShowEdit(false)}
+                                disabled={editLoading}
+                                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors disabled:opacity-50"
+                            >
+                                {t("cancel")}
+                            </button>
+                            <button
+                                onClick={handleSaveConfig}
+                                disabled={editLoading}
+                                className="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {editLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4" />}
+                                {t("saveConfig")}
                             </button>
                         </div>
                     </div>

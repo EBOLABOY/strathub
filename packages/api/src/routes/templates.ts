@@ -5,18 +5,57 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { prisma } from '@crypto-strategy-hub/database';
 import { authGuard, requireUserId } from '../middleware/auth-guard.js';
 import { randomUUID } from 'crypto';
+import { createApiError } from '../middleware/error-handler.js';
 
 export const templatesRouter = Router();
 
 // 所有模板路由需要认证
 templatesRouter.use(authGuard);
 
+const templateIdSchema = z.object({ id: z.string().uuid() });
+
+const templateCreateSchema = z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    configJson: z.string().min(1).refine((value) => {
+        try {
+            JSON.parse(value);
+            return true;
+        } catch {
+            return false;
+        }
+    }, { message: 'Invalid JSON format' }),
+});
+
+const templateUpdateSchema = z
+    .object({
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        configJson: z
+            .string()
+            .min(1)
+            .refine((value) => {
+                try {
+                    JSON.parse(value);
+                    return true;
+                } catch {
+                    return false;
+                }
+            }, { message: 'Invalid JSON format' })
+            .optional(),
+    })
+    .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' });
+
+const applySchema = z.object({ botId: z.string().uuid() });
+
 // GET /api/templates - 获取所有模板
 templatesRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
+        requireUserId(req);
         const templates = await prisma.configTemplate.findMany({
             orderBy: { updatedAt: 'desc' },
         });
@@ -31,20 +70,7 @@ templatesRouter.get('/', async (req: Request, res: Response, next: NextFunction)
 templatesRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
         requireUserId(req);
-        const { name, description, configJson } = req.body;
-
-        if (!name || !configJson) {
-            res.status(400).json({ error: 'Missing required fields', code: 'MISSING_FIELDS' });
-            return;
-        }
-
-        // 验证 JSON 格式
-        try {
-            JSON.parse(configJson);
-        } catch {
-            res.status(400).json({ error: 'Invalid JSON format', code: 'INVALID_JSON' });
-            return;
-        }
+        const { name, description, configJson } = templateCreateSchema.parse(req.body);
 
         const template = await prisma.configTemplate.create({
             data: {
@@ -64,15 +90,15 @@ templatesRouter.post('/', async (req: Request, res: Response, next: NextFunction
 // GET /api/templates/:id - 获取单个模板
 templatesRouter.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { id } = req.params;
+        requireUserId(req);
+        const { id } = templateIdSchema.parse(req.params);
 
         const template = await prisma.configTemplate.findUnique({
             where: { id },
         });
 
         if (!template) {
-            res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
-            return;
+            throw createApiError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
         }
 
         res.json(template);
@@ -85,26 +111,15 @@ templatesRouter.get('/:id', async (req: Request, res: Response, next: NextFuncti
 templatesRouter.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
         requireUserId(req);
-        const { id } = req.params;
-        const { name, description, configJson } = req.body;
+        const { id } = templateIdSchema.parse(req.params);
+        const { name, description, configJson } = templateUpdateSchema.parse(req.body);
 
         const existing = await prisma.configTemplate.findUnique({
             where: { id },
         });
 
         if (!existing) {
-            res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
-            return;
-        }
-
-        // 验证 JSON 格式（如果提供）
-        if (configJson) {
-            try {
-                JSON.parse(configJson);
-            } catch {
-                res.status(400).json({ error: 'Invalid JSON format', code: 'INVALID_JSON' });
-                return;
-            }
+            throw createApiError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
         }
 
         const updated = await prisma.configTemplate.update({
@@ -126,15 +141,14 @@ templatesRouter.put('/:id', async (req: Request, res: Response, next: NextFuncti
 templatesRouter.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
         requireUserId(req);
-        const { id } = req.params;
+        const { id } = templateIdSchema.parse(req.params);
 
         const existing = await prisma.configTemplate.findUnique({
             where: { id },
         });
 
         if (!existing) {
-            res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
-            return;
+            throw createApiError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
         }
 
         await prisma.configTemplate.delete({
@@ -151,13 +165,8 @@ templatesRouter.delete('/:id', async (req: Request, res: Response, next: NextFun
 templatesRouter.post('/:id/apply', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = requireUserId(req);
-        const { id } = req.params;
-        const { botId } = req.body;
-
-        if (!botId) {
-            res.status(400).json({ error: 'Missing botId', code: 'MISSING_BOT_ID' });
-            return;
-        }
+        const { id } = templateIdSchema.parse(req.params);
+        const { botId } = applySchema.parse(req.body);
 
         // 获取模板
         const template = await prisma.configTemplate.findUnique({
@@ -165,8 +174,7 @@ templatesRouter.post('/:id/apply', async (req: Request, res: Response, next: Nex
         });
 
         if (!template) {
-            res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
-            return;
+            throw createApiError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
         }
 
         // 获取 Bot（必须是用户自己的）
@@ -175,17 +183,12 @@ templatesRouter.post('/:id/apply', async (req: Request, res: Response, next: Nex
         });
 
         if (!bot) {
-            res.status(404).json({ error: 'Bot not found', code: 'BOT_NOT_FOUND' });
-            return;
+            throw createApiError('Bot not found', 404, 'BOT_NOT_FOUND');
         }
 
         // 只有 DRAFT 或 STOPPED 状态的 Bot 才能应用模板
         if (!['DRAFT', 'STOPPED'].includes(bot.status)) {
-            res.status(400).json({
-                error: 'Can only apply template to DRAFT or STOPPED bots',
-                code: 'INVALID_BOT_STATUS',
-            });
-            return;
+            throw createApiError('Can only apply template to DRAFT or STOPPED bots', 400, 'INVALID_BOT_STATUS');
         }
 
         // 更新 Bot 配置

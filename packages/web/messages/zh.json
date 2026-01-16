@@ -45,8 +45,13 @@
     "KILL_SWITCH_LOCKED": "Kill Switch 已启用，禁止操作",
     "CONCURRENT_MODIFICATION": "并发修改，请重试",
     "EXCHANGE_UNAVAILABLE": "交易所不可用",
+    "EXCHANGE_NOT_SUPPORTED": "交易所不支持",
     "EXCHANGE_ACCOUNT_NOT_FOUND": "交易所账户不存在",
     "EXCHANGE_ACCOUNT_ALREADY_EXISTS": "交易所账户已存在",
+    "MISSING_PASSPHRASE": "OKX 需要 Passphrase",
+    "MAINNET_TRADING_DISABLED": "主网访问已禁用（需要 ALLOW_MAINNET_TRADING=true）",
+    "NO_ACCOUNT": "未找到可用的交易所账户",
+    "MISSING_SYMBOL": "缺少交易对",
     "ACCOUNT_HAS_BOTS": "该账户下存在机器人，无法删除",
     "INVALID_STATE_FOR_DELETE": "当前状态不允许删除，请先停止机器人",
     "MAINNET_ACCOUNT_FORBIDDEN": "未配置加密密钥，禁止创建主网账户",
@@ -136,7 +141,8 @@
     "available": "可用",
     "locked": "冻结",
     "total": "总量",
-    "stablecoinsOnly": "总资产仅统计稳定币价值"
+    "stablecoinsOnly": "总资产仅统计稳定币价值",
+    "notImplemented": "待实现"
   },
   "chart": {
     "title": "资产表现",
@@ -147,7 +153,10 @@
       "w1": "1周",
       "m1": "1月",
       "y1": "1年"
-    }
+    },
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "value": "资产"
   },
   "topology": {
     "title": "系统拓扑",
@@ -208,6 +217,11 @@
       "orderType": "委托价格",
       "limitOrder": "限价委托",
       "marketOrder": "市价委托",
+      "entryPriceSource": "入场成交价",
+      "entryPriceTrigger": "策略触发价",
+      "entryPriceOrderbook": "盘口价（买/卖档）",
+      "entryBookLevel": "盘口档位",
+      "entryBookLevelHint": "买单用卖一~卖五；卖单用买一~买五（自动取对应档位价格）",
       "amountType": "委托数量",
       "byQuantity": "按数量 (Base)",
       "byAmount": "按金额 (Quote)",
@@ -284,8 +298,15 @@
     "actions": {
       "failed": "{action}机器人失败",
       "previewFailed": "预览机器人失败",
-      "deleteFailed": "删除机器人失败"
+      "deleteFailed": "删除机器人失败",
+      "editSaveFailed": "保存配置失败"
     },
+    "edit": "编辑",
+    "editModalTitle": "编辑配置",
+    "editModalSubtitle": "修改网格参数后保存",
+    "editModeSimple": "简易模式",
+    "editModeAdvanced": "高级模式",
+    "saveConfig": "保存",
     "delete": "删除",
     "deleteModalTitle": "删除机器人",
     "deleteModalSubtitle": "此操作无法撤销",
@@ -309,9 +330,15 @@
     "subtitle": "管理你的交易所 API 连接",
     "add": "添加账户",
     "securityTitle": "V1 安全提示",
-    "securityBody": "该版本会以明文存储凭证。仅使用测试网 API Key。主网账户需要加密（尚未启用）。",
+    "securityBody": "测试网账户允许明文存储凭证（为了开发便利）。主网账户必须启用加密（设置 CREDENTIALS_ENCRYPTION_KEY）。",
     "emptyTitle": "还没有交易所账户",
     "emptySubtitle": "点击“添加账户”绑定你的第一个交易所。",
+    "exchanges": {
+      "binance": "Binance",
+      "okx": "OKX",
+      "huobi": "Huobi",
+      "htx": "HTX"
+    },
     "network": {
       "testnet": "测试网",
       "mainnet": "主网"
@@ -325,16 +352,19 @@
       "name": "名称",
       "exchange": "交易所",
       "apiKey": "API Key",
-      "secret": "密钥"
+      "secret": "密钥",
+      "passphrase": "Passphrase"
     },
     "placeholders": {
       "name": "例如：我的测试网账户",
       "apiKey": "输入 API Key",
-      "secret": "输入密钥"
+      "secret": "输入密钥",
+      "passphrase": "输入 Passphrase（OKX 必填）"
     },
     "editCredentialsHint": "留空表示不修改当前密钥",
+    "editPassphraseHint": "留空表示不修改 Passphrase",
     "testnetLabel": "测试网账户",
-    "testnetHint": "主网账户需要加密（V1 暂不支持）",
+    "testnetHint": "主网账户需要加密（设置 CREDENTIALS_ENCRYPTION_KEY）",
     "cancel": "取消",
     "create": "创建",
     "update": "保存",
@@ -346,6 +376,7 @@
       "create": "创建账户失败",
       "update": "更新账户失败",
       "credentialsPair": "API Key 和密钥必须同时填写",
+      "passphraseRequired": "OKX 需要 Passphrase",
       "delete": "删除账户失败"
     }
   },

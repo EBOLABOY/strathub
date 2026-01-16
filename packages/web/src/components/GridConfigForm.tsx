@@ -28,6 +28,8 @@ interface FormState {
     priceMax: string;
     expirationDays: string;
     orderType: 'limit' | 'market';
+    entryPriceSource: 'trigger' | 'orderbook';
+    entryBookLevel: string;
     amountMode: 'amount' | 'percent';
     gridCount: string;
     amountPerGrid: string;
@@ -132,31 +134,42 @@ export function GridConfigForm({ configJson, onChange }: GridConfigFormProps) {
     const [formState, setFormState] = useState<FormState>(() => {
         try {
             const p = JSON.parse(configJson);
+            const schemaVersion = Number.isFinite(p?.schemaVersion) ? Math.trunc(p.schemaVersion) : 1;
             const isSym = p.sizing?.gridSymmetric ?? true;
+            const isPercent = p.trigger?.gridType !== 'price';
+            const percentDisplayFactor = isPercent ? (schemaVersion >= 2 ? 100 : 1) : 1;
+            const pullbackDisplayFactor = schemaVersion >= 2 ? 100 : 1;
+            const positionDisplayFactor = schemaVersion >= 2 ? 100 : 1;
+
+            const expiryDaysRaw = p.lifecycle?.expiryDays;
+            const expiryDays = typeof expiryDaysRaw === 'number' && Number.isFinite(expiryDaysRaw) ? Math.trunc(expiryDaysRaw) : -1;
+            const enableExpires = expiryDays >= 0;
             return {
                 basePriceType: p.trigger?.basePriceType || 'current',
                 basePrice: p.trigger?.basePrice || '',
                 gridType: p.trigger?.gridType || 'percent',
                 isSymmetric: isSym,
                 riseSell: isSym
-                    ? (parseFloat(p.trigger?.riseSell || "0.02") * (p.trigger?.gridType === 'price' ? 1 : 100)).toString()
-                    : (parseFloat(p.trigger?.riseSell || "0.02") * (p.trigger?.gridType === 'price' ? 1 : 100)).toString(),
+                    ? (parseFloat(p.trigger?.riseSell || "0.02") * percentDisplayFactor).toString()
+                    : (parseFloat(p.trigger?.riseSell || "0.02") * percentDisplayFactor).toString(),
                 fallBuy: isSym
-                    ? (parseFloat(p.trigger?.fallBuy || "0.02") * (p.trigger?.gridType === 'price' ? 1 : 100)).toString()
-                    : (parseFloat(p.trigger?.fallBuy || "0.02") * (p.trigger?.gridType === 'price' ? 1 : 100)).toString(),
+                    ? (parseFloat(p.trigger?.fallBuy || "0.02") * percentDisplayFactor).toString()
+                    : (parseFloat(p.trigger?.fallBuy || "0.02") * percentDisplayFactor).toString(),
                 enablePullback: p.trigger?.enablePullbackSell ?? false,
-                pullbackPercent: p.trigger?.pullbackSellPercent ? (parseFloat(p.trigger.pullbackSellPercent) * 100).toString() : "0.5",
+                pullbackPercent: p.trigger?.pullbackSellPercent ? (parseFloat(p.trigger.pullbackSellPercent) * pullbackDisplayFactor).toString() : "0.5",
                 enableRebound: p.trigger?.enableReboundBuy ?? false,
-                reboundPercent: p.trigger?.reboundBuyPercent ? (parseFloat(p.trigger.reboundBuyPercent) * 100).toString() : "0.5",
+                reboundPercent: p.trigger?.reboundBuyPercent ? (parseFloat(p.trigger.reboundBuyPercent) * pullbackDisplayFactor).toString() : "0.5",
                 floorPrice: p.risk?.floorPrice || '',
                 priceMax: p.trigger?.priceMax || '',
-                expirationDays: "365",
+                expirationDays: enableExpires ? String(expiryDays) : "365",
                 orderType: p.order?.orderType || 'limit',
+                entryPriceSource: p.order?.entryPriceSource === 'orderbook' ? 'orderbook' : 'trigger',
+                entryBookLevel: Number.isFinite(p.order?.entryBookLevel) ? String(Math.trunc(p.order.entryBookLevel)) : '1',
                 amountMode: p.sizing?.amountMode || 'amount',
                 gridCount: p.sizing?.symmetric?.orderQuantity || "20",
                 amountPerGrid: p.sizing?.symmetric?.orderQuantity || "10",
-                maxPositionPercent: p.position?.maxPositionPercent ? (parseFloat(p.position.maxPositionPercent) * 100).toString() : "100",
-                enableExpires: false,
+                maxPositionPercent: p.position?.maxPositionPercent ? (parseFloat(p.position.maxPositionPercent) * positionDisplayFactor).toString() : "100",
+                enableExpires,
             };
         } catch {
             return {
@@ -174,6 +187,8 @@ export function GridConfigForm({ configJson, onChange }: GridConfigFormProps) {
                 priceMax: '',
                 expirationDays: '365',
                 orderType: 'limit',
+                entryPriceSource: 'trigger',
+                entryBookLevel: '1',
                 amountMode: 'amount',
                 gridCount: "20",
                 amountPerGrid: "10",
@@ -191,6 +206,7 @@ export function GridConfigForm({ configJson, onChange }: GridConfigFormProps) {
 
             const newConfig = {
                 ...currentConfig,
+                schemaVersion: 2,
                 trigger: {
                     ...currentConfig.trigger,
                     gridType: newState.gridType,
@@ -204,7 +220,14 @@ export function GridConfigForm({ configJson, onChange }: GridConfigFormProps) {
                     enableReboundBuy: newState.enableRebound,
                     reboundBuyPercent: newState.enableRebound ? (parseFloat(newState.reboundPercent || '0') / 100).toString() : undefined,
                 },
-                order: { orderType: newState.orderType },
+                order: {
+                    orderType: newState.orderType,
+                    entryPriceSource: newState.entryPriceSource,
+                    entryBookLevel:
+                        newState.entryPriceSource === 'orderbook'
+                            ? Math.max(1, Math.min(5, parseInt(newState.entryBookLevel || '1', 10)))
+                            : undefined,
+                },
                 sizing: {
                     amountMode: newState.amountMode,
                     gridSymmetric: newState.isSymmetric,
@@ -212,6 +235,7 @@ export function GridConfigForm({ configJson, onChange }: GridConfigFormProps) {
                     asymmetric: { buyQuantity: newState.amountPerGrid, sellQuantity: newState.amountPerGrid }
                 },
                 position: { maxPositionPercent: (parseFloat(newState.maxPositionPercent) / 100).toString() },
+                lifecycle: { ...(currentConfig.lifecycle ?? {}), expiryDays: newState.enableExpires ? parseInt(newState.expirationDays || '365', 10) : -1 },
                 risk: { enableFloorPrice: !!newState.floorPrice, floorPrice: newState.floorPrice || undefined }
             };
             onChange(JSON.stringify(newConfig, null, 2));
@@ -408,6 +432,44 @@ export function GridConfigForm({ configJson, onChange }: GridConfigFormProps) {
                         <ToggleButton active={formState.orderType === 'limit'} label={t('limitOrder')} onClick={() => handleChange('orderType', 'limit')} />
                         <ToggleButton active={formState.orderType === 'market'} label={t('marketOrder')} onClick={() => handleChange('orderType', 'market')} />
                     </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('entryPriceSource')}</label>
+                        <div className="inline-flex bg-slate-50 rounded-lg p-0.5 border border-slate-200">
+                            <ToggleButton
+                                active={formState.entryPriceSource === 'trigger'}
+                                label={t('entryPriceTrigger')}
+                                onClick={() => handleChange('entryPriceSource', 'trigger')}
+                            />
+                            <ToggleButton
+                                active={formState.entryPriceSource === 'orderbook'}
+                                label={t('entryPriceOrderbook')}
+                                onClick={() => handleChange('entryPriceSource', 'orderbook')}
+                            />
+                        </div>
+                    </div>
+
+                    {formState.entryPriceSource === 'orderbook' && (
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('entryBookLevel')}</label>
+                            <div className="inline-flex bg-slate-50 rounded-lg p-0.5 border border-slate-200">
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                    <ToggleButton
+                                        key={n}
+                                        active={formState.entryBookLevel === String(n)}
+                                        label={String(n)}
+                                        onClick={() => handleChange('entryBookLevel', String(n))}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {formState.entryPriceSource === 'orderbook' && (
+                        <p className="text-xs text-slate-400">{t('entryBookLevelHint')}</p>
+                    )}
                 </div>
             </div>
 

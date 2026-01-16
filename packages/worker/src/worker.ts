@@ -9,6 +9,7 @@
  */
 
 import { prisma } from '@crypto-strategy-hub/database';
+import { normalizeSupportedExchangeId } from '@crypto-strategy-hub/shared';
 import type {
     ExchangeAccountInfo,
     MarketDataProvider,
@@ -140,6 +141,19 @@ export function removeFromProviderCache(accountId: string): void {
 // Core Logic
 // ============================================================================
 
+function readExpiryDays(configJson: string): number | null {
+    try {
+        const parsed = JSON.parse(configJson) as { lifecycle?: { expiryDays?: unknown } };
+        const raw = parsed.lifecycle?.expiryDays;
+        if (raw === undefined || raw === null) return null;
+        if (typeof raw !== 'number') return null;
+        if (!Number.isFinite(raw)) return null;
+        return Math.trunc(raw);
+    } catch {
+        return null;
+    }
+}
+
 /**
  * 处理单个 Bot 的 risk-check
  */
@@ -163,9 +177,48 @@ export async function runOnce(
             return { success: true };
         }
 
+        // Lifecycle expiry: expired bots are moved to STOPPING so the stopping loop cancels open orders.
+        const expiryDays = readExpiryDays(bot.configJson);
+        if (expiryDays !== null && expiryDays >= 0) {
+            // expiryDays is counted from start/resume time (startedAt). If startedAt is missing (legacy bots),
+            // skip expiry to avoid breaking existing running bots.
+            if (!bot.startedAt) {
+                // continue
+            } else {
+                const startedAtMs =
+                    bot.startedAt instanceof Date ? bot.startedAt.getTime() : new Date(bot.startedAt).getTime();
+                const expiresAtMs = startedAtMs + expiryDays * 24 * 60 * 60 * 1000;
+
+                if (Date.now() >= expiresAtMs) {
+                    const updated = await prisma.bot.updateMany({
+                        where: {
+                            id: bot.id,
+                            statusVersion: bot.statusVersion,
+                            status: { in: ['RUNNING', 'WAITING_TRIGGER'] },
+                        },
+                        data: {
+                            status: 'STOPPING',
+                            statusVersion: bot.statusVersion + 1,
+                            lastError: `EXPIRED: expiryDays=${expiryDays}`,
+                        },
+                    });
+
+                    if (updated.count > 0) {
+                        console.log(`[Worker] Bot ${botId}: expired, moved to STOPPING`);
+                    }
+                    return { success: true };
+                }
+            }
+        }
+
+        const exchange = normalizeSupportedExchangeId(bot.exchangeAccount.exchange);
+        if (!exchange) {
+            return { success: false, error: `EXCHANGE_NOT_SUPPORTED: ${bot.exchangeAccount.exchange}` };
+        }
+
         const provider = await getOrCreateProvider(deps.providerFactory, {
             id: bot.exchangeAccount.id,
-            exchange: bot.exchangeAccount.exchange,
+            exchange,
         });
 
         const result = await deps.checkAndTriggerAutoClose(

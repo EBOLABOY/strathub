@@ -8,9 +8,12 @@
 import { ExchangeSimulator } from '@crypto-strategy-hub/exchange-simulator';
 import type { TradingExecutor } from '@crypto-strategy-hub/shared';
 import { createSimulatorExecutor } from './simulator-executor.js';
-import { createBinanceExecutor } from '@crypto-strategy-hub/exchange';
+import {
+    createCcxtExecutor,
+} from '@crypto-strategy-hub/exchange';
 import { PrismaClient } from '@crypto-strategy-hub/database';
 import { decryptCredentials, isEncryptedFormat } from '@crypto-strategy-hub/security';
+import { normalizeSupportedExchangeId, requiresPassphrase } from '@crypto-strategy-hub/shared';
 
 // ============================================================================
 // Factory Types
@@ -123,19 +126,24 @@ export function createRealFactory(prisma: PrismaClient): ExecutorFactory {
             throw new Error(`CREDENTIALS_DECRYPT_FAILED: ${exchangeAccountId}`);
         }
 
-        // Create Executor
-        let executor: TradingExecutor;
-        if (account.exchange === 'binance') {
-            const allowMainnet = process.env['ALLOW_MAINNET_TRADING'] === 'true';
-            executor = createBinanceExecutor({
-                apiKey: credentials.apiKey,
-                secret: credentials.secret,
-                isTestnet: account.isTestnet,
-                allowMainnet
-            });
-        } else {
+        const allowMainnet = process.env['ALLOW_MAINNET_TRADING'] === 'true';
+
+        const exchangeId = normalizeSupportedExchangeId(account.exchange);
+        if (!exchangeId) {
             throw new Error(`Unsupported exchange: ${account.exchange}`);
         }
+        if (requiresPassphrase(exchangeId) && !credentials.passphrase) {
+            throw new Error(`CREDENTIALS_MISSING_PASSPHRASE: ${exchangeAccountId}`);
+        }
+
+        const executor = createCcxtExecutor({
+            exchangeId,
+            apiKey: credentials.apiKey,
+            secret: credentials.secret,
+            passphrase: credentials.passphrase,
+            isTestnet: account.isTestnet,
+            allowMainnet,
+        });
 
         cache.set(exchangeAccountId, { executor, accountUpdatedAtMs });
         return { executor };

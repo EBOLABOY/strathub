@@ -77,12 +77,28 @@ export interface PreviewTickerInfo {
     ask1?: string;
 }
 
+export interface PreviewOrderBookLevel {
+    price: string;
+    amount: string;
+}
+
+export interface PreviewOrderBookInfo {
+    bids: PreviewOrderBookLevel[];
+    asks: PreviewOrderBookLevel[];
+}
+
 export interface PreviewBalanceInfo {
     quote: string;
     free: string;
 }
 
 export interface GridConfig {
+    /**
+     * Config schema version.
+     * - v1 (default): percent fields are in "percent points" (e.g. "2" = 2%)
+     * - v2+: percent fields are in ratio (e.g. "0.02" = 2%)
+     */
+    schemaVersion?: number;
     trigger: {
         gridType: 'percent' | 'price';
         basePriceType: 'current' | 'cost' | 'avg_24h' | 'manual';
@@ -98,6 +114,14 @@ export interface GridConfig {
     };
     order: {
         orderType: 'limit' | 'market';
+        /**
+         * Entry execution price source (WAITING_TRIGGER only).
+         * - trigger: use strategy trigger price
+         * - orderbook: use order book level price (buy=askN, sell=bidN)
+         */
+        entryPriceSource?: 'trigger' | 'orderbook';
+        /** 1-5, only when entryPriceSource=orderbook */
+        entryBookLevel?: number;
     };
     sizing: {
         amountMode: 'percent' | 'amount';
@@ -109,7 +133,13 @@ export interface GridConfig {
         maxPositionPercent?: string;
         minPositionPercent?: string;
     };
+    lifecycle?: {
+        /** -1 or undefined means no expiry */
+        expiryDays?: number;
+    };
     risk?: {
+        enableBuy?: boolean;
+        enableSell?: boolean;
         enableFloorPrice?: boolean;
         floorPrice?: string;
     };
@@ -178,6 +208,20 @@ function parseDecimalSafe(value: string | undefined, fallback: string = '0'): De
     }
 }
 
+function getSchemaVersion(config: GridConfig): number {
+    const raw = (config as GridConfig).schemaVersion;
+    if (typeof raw !== 'number') return 1;
+    if (!Number.isFinite(raw)) return 1;
+    return Math.trunc(raw);
+}
+
+function percentToRatio(value: string | undefined, schemaVersion: number): Decimal {
+    const raw = parseDecimalSafe(value);
+    // v1 stores "percent points" (2 => 2%), so convert to ratio.
+    // v2+ stores ratio directly (0.02 => 2%).
+    return schemaVersion >= 2 ? raw : raw.div(100);
+}
+
 // ============================================================================
 // PreviewEngine
 // ============================================================================
@@ -192,6 +236,7 @@ export function calculatePreview(
     const issues: PreviewIssue[] = [];
     const lines: PreviewLine[] = [];
     const orders: PreviewOrder[] = [];
+    const schemaVersion = getSchemaVersion(config);
 
     // 1. 校验 basePriceType
     if (config.trigger.basePriceType === 'cost') {
@@ -232,11 +277,11 @@ export function calculatePreview(
     let sellTriggerPrice: Decimal;
 
     if (config.trigger.gridType === 'percent') {
-        const fallBuyPct = parseDecimalSafe(config.trigger.fallBuy);
-        const riseSellPct = parseDecimalSafe(config.trigger.riseSell);
+        const fallBuyRatio = percentToRatio(config.trigger.fallBuy, schemaVersion);
+        const riseSellRatio = percentToRatio(config.trigger.riseSell, schemaVersion);
 
-        buyTriggerPrice = basePrice.mul(new Decimal(1).minus(fallBuyPct.div(100)));
-        sellTriggerPrice = basePrice.mul(new Decimal(1).plus(riseSellPct.div(100)));
+        buyTriggerPrice = basePrice.mul(new Decimal(1).minus(fallBuyRatio));
+        sellTriggerPrice = basePrice.mul(new Decimal(1).plus(riseSellRatio));
     } else {
         const fallBuyAbs = parseDecimalSafe(config.trigger.fallBuy);
         const riseSellAbs = parseDecimalSafe(config.trigger.riseSell);
@@ -395,6 +440,15 @@ export function calculatePreview(
                 side: 'buy',
                 type: 'market',
                 quoteAmount: buyQuoteNorm,
+                baseAmount: buyBaseNorm,
+            });
+        }
+        if (sellQuoteAmount.gt(0)) {
+            orders.push({
+                side: 'sell',
+                type: 'market',
+                quoteAmount: sellQuoteNorm,
+                baseAmount: sellBaseNorm,
             });
         }
     }

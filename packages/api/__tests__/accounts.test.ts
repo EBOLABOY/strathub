@@ -220,6 +220,44 @@ describe('Accounts API', () => {
                 }
             }
         });
+
+        it('should return 400 MISSING_PASSPHRASE when exchange is okx without passphrase', async () => {
+            const app = await createTestApp();
+
+            const res = await request(app)
+                .post('/api/accounts')
+                .set('Authorization', `Bearer ${testToken}`)
+                .send({
+                    name: `okx-${Date.now()}`,
+                    exchange: 'okx',
+                    apiKey: 'mock-key',
+                    secret: 'mock-secret',
+                    isTestnet: true,
+                });
+
+            expect(res.status).toBe(400);
+            expect(res.body.code).toBe('MISSING_PASSPHRASE');
+        });
+
+        it('should create okx account when passphrase is provided', async () => {
+            const app = await createTestApp();
+
+            const res = await request(app)
+                .post('/api/accounts')
+                .set('Authorization', `Bearer ${testToken}`)
+                .send({
+                    name: `okx-${Date.now()}`,
+                    exchange: 'okx',
+                    apiKey: 'mock-key',
+                    secret: 'mock-secret',
+                    passphrase: 'mock-passphrase',
+                    isTestnet: true,
+                });
+
+            expect(res.status).toBe(201);
+            expect(res.body.id).toBeDefined();
+            expect(res.body.exchange).toBe('okx');
+        });
     });
 
     describe('PUT /api/accounts/:accountId', () => {

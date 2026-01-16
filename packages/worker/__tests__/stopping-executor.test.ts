@@ -77,8 +77,8 @@ describe('STOPPING 执行器验收测试', () => {
         });
 
         const mockOrders: OpenOrder[] = [
-            { id: 'order-1', symbol: 'BNB/USDT' },
-            { id: 'order-2', symbol: 'BNB/USDT' },
+            { id: 'order-1', symbol: 'BNB/USDT', clientOrderId: 'gb1-test-1' },
+            { id: 'order-2', symbol: 'BNB/USDT', clientOrderId: 'gb1-test-2' },
         ];
         const executor = createMockExecutor(mockOrders);
         const processStoppingBot = createProcessStoppingBot(executor);
@@ -116,6 +116,12 @@ describe('STOPPING 执行器验收测试', () => {
             },
             async cancelOrder() {
                 throw new Error('Exchange unavailable');
+            },
+            async createOrder() {
+                throw new Error('Exchange unavailable');
+            },
+            async fetchBalance() {
+                return {};
             },
         };
         const processStoppingBot = createProcessStoppingBot(failingExecutor);
@@ -257,5 +263,58 @@ describe('STOPPING 执行器验收测试', () => {
 
         randomSpy.mockRestore();
         vi.useRealTimers();
+    });
+
+    it('should force-close position on STOP_LOSS and then STOPPED', async () => {
+        const bot = await prisma.bot.create({
+            data: {
+                userId: testUserId,
+                exchangeAccountId: testExchangeAccountId,
+                symbol: 'BNB/USDT',
+                configJson: dummyConfig,
+                status: 'STOPPING',
+                statusVersion: 5,
+                runId: 'run-789',
+                lastError: 'STOP_LOSS: last=500 < floorPrice=550',
+            },
+        });
+
+        const executor: ExchangeExecutor = {
+            async fetchOpenOrders() {
+                return [];
+            },
+            async cancelOrder() {
+                return;
+            },
+            async fetchBalance() {
+                return {
+                    BNB: { free: '1', locked: '0', total: '1' },
+                    USDT: { free: '0', locked: '0', total: '0' },
+                };
+            },
+            async createOrder(params) {
+                return { exchangeOrderId: 'ex-close-1', clientOrderId: params.clientOrderId, status: 'FILLED' };
+            },
+        };
+
+        const processStoppingBot = createProcessStoppingBot(executor);
+        const result = await processStoppingBot(bot.id);
+
+        expect(result.success).toBe(true);
+        expect(result.newStatus).toBe('STOPPED');
+
+        const afterBot = await prisma.bot.findUnique({ where: { id: bot.id } });
+        expect(afterBot!.status).toBe('STOPPED');
+        expect(afterBot!.lastError).toContain('STOP_LOSS');
+
+        const closeOrder = await prisma.order.findFirst({
+            where: { botId: bot.id, clientOrderId: { startsWith: 'gb1c' } },
+            orderBy: { createdAt: 'desc' },
+        });
+        expect(closeOrder).toBeTruthy();
+        expect(closeOrder!.type).toBe('market');
+        expect(closeOrder!.side).toBe('sell');
+        expect(closeOrder!.status).toBe('FILLED');
+        expect(closeOrder!.exchangeOrderId).toBe('ex-close-1');
     });
 });

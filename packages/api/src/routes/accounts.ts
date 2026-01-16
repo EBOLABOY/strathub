@@ -8,10 +8,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma, Prisma } from '@crypto-strategy-hub/database';
+import { FEATURED_EXCHANGES, normalizeSupportedExchangeId, requiresPassphrase, supportsTestnet } from '@crypto-strategy-hub/shared';
 import { createApiError } from '../middleware/error-handler.js';
 import { authGuard, requireUserId } from '../middleware/auth-guard.js';
-import { encryptCredentials, decryptCredentials, isEncryptionEnabled } from '@crypto-strategy-hub/security';
-import { createBinanceExecutor } from '@crypto-strategy-hub/exchange';
+import { encryptCredentials, decryptCredentials, isEncryptedFormat, isEncryptionEnabled } from '@crypto-strategy-hub/security';
+import { createCcxtExecutor } from '@crypto-strategy-hub/exchange';
 
 export const accountsRouter = Router();
 
@@ -21,9 +22,10 @@ accountsRouter.use(authGuard);
 // Schemas
 const createAccountSchema = z.object({
     name: z.string().min(1).max(100),
-    exchange: z.enum(['binance', 'okx']),
+    exchange: z.enum(FEATURED_EXCHANGES),
     apiKey: z.string().min(1),
     secret: z.string().min(1),
+    passphrase: z.string().min(1).optional(),
     isTestnet: z.boolean().optional().default(false),
 });
 
@@ -32,6 +34,7 @@ const updateAccountSchema = z
         name: z.string().min(1).max(100).optional(),
         apiKey: z.string().min(1).optional(),
         secret: z.string().min(1).optional(),
+        passphrase: z.string().min(1).optional(),
         isTestnet: z.boolean().optional(),
     })
     .refine((data) => (data.apiKey === undefined) === (data.secret === undefined), {
@@ -40,6 +43,10 @@ const updateAccountSchema = z
     .refine((data) => Object.keys(data).length > 0, {
         message: 'At least one field is required',
     });
+
+const accountIdParamSchema = z.object({
+    accountId: z.string().uuid(),
+});
 
 // DTO - Never expose encryptedCredentials
 interface AccountDTO {
@@ -64,6 +71,13 @@ function toAccountDTO(account: {
         isTestnet: account.isTestnet,
         createdAt: account.createdAt,
     };
+}
+
+type StoredCredentials = { apiKey: string; secret: string; passphrase?: string };
+
+function parseStoredCredentials(raw: string): StoredCredentials {
+    const json = isEncryptedFormat(raw) ? decryptCredentials(raw) : raw;
+    return JSON.parse(json) as StoredCredentials;
 }
 
 // GET /api/accounts - List user's exchange accounts
@@ -93,7 +107,18 @@ accountsRouter.get('/', async (req: Request, res: Response, next: NextFunction) 
 accountsRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = requireUserId(req);
-        const { name, exchange, apiKey, secret, isTestnet } = createAccountSchema.parse(req.body);
+        const { name, exchange: rawExchange, apiKey, secret, passphrase, isTestnet } = createAccountSchema.parse(req.body);
+
+        const exchangeId = normalizeSupportedExchangeId(rawExchange);
+        if (!exchangeId) {
+            throw createApiError(`Exchange not supported: ${rawExchange}`, 400, 'EXCHANGE_NOT_SUPPORTED');
+        }
+        if (isTestnet && !supportsTestnet(exchangeId)) {
+            throw createApiError('Testnet is not supported for this exchange', 400, 'TESTNET_NOT_SUPPORTED');
+        }
+        if (requiresPassphrase(exchangeId) && !passphrase) {
+            throw createApiError('Passphrase is required for this exchange', 400, 'MISSING_PASSPHRASE');
+        }
 
         // M3B: Allow mainnet accounts only when encryption is enabled
         // This ensures credentials are never stored as plaintext for real keys
@@ -107,7 +132,7 @@ accountsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
 
         // Encrypt credentials if encryption key is available
         // Otherwise store as plaintext JSON (for testnet backward compat)
-        const credentialsJson = JSON.stringify({ apiKey, secret });
+        const credentialsJson = JSON.stringify({ apiKey, secret, ...(passphrase ? { passphrase } : {}) });
         let encryptedCredentials: string;
 
         if (isEncryptionEnabled()) {
@@ -122,7 +147,7 @@ accountsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
             data: {
                 userId,
                 name,
-                exchange,
+                exchange: exchangeId,
                 isTestnet,
                 encryptedCredentials,
             },
@@ -157,8 +182,8 @@ accountsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
 accountsRouter.put('/:accountId', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = requireUserId(req);
-        const { accountId } = req.params;
-        const { name, apiKey, secret, isTestnet } = updateAccountSchema.parse(req.body);
+        const { accountId } = accountIdParamSchema.parse(req.params);
+        const { name, apiKey, secret, passphrase, isTestnet } = updateAccountSchema.parse(req.body);
 
         const account = await prisma.exchangeAccount.findFirst({
             where: { id: accountId, userId },
@@ -176,9 +201,20 @@ accountsRouter.put('/:accountId', async (req: Request, res: Response, next: Next
             throw createApiError('Account not found', 404, 'EXCHANGE_ACCOUNT_NOT_FOUND');
         }
 
+        const exchangeId = normalizeSupportedExchangeId(account.exchange);
+        if (!exchangeId) {
+            throw createApiError(`Exchange not supported: ${account.exchange}`, 400, 'EXCHANGE_NOT_SUPPORTED');
+        }
+
         const nextIsTestnet = isTestnet ?? account.isTestnet;
         const isSwitchingToMainnet = isTestnet === false && account.isTestnet !== false;
-        const updatingCredentials = apiKey !== undefined && secret !== undefined;
+        const updatingApiKeySecret = apiKey !== undefined && secret !== undefined;
+        const updatingPassphrase = passphrase !== undefined;
+        const updatingCredentials = updatingApiKeySecret || updatingPassphrase;
+
+        if (isTestnet === true && !supportsTestnet(exchangeId)) {
+            throw createApiError('Testnet is not supported for this exchange', 400, 'TESTNET_NOT_SUPPORTED');
+        }
 
         // Security: never allow storing mainnet credentials unencrypted.
         // - Switching from testnet -> mainnet requires encryption enabled.
@@ -193,7 +229,24 @@ accountsRouter.put('/:accountId', async (req: Request, res: Response, next: Next
 
         let encryptedCredentials: string | undefined;
         if (updatingCredentials) {
-            const credentialsJson = JSON.stringify({ apiKey, secret });
+            let current: StoredCredentials;
+            try {
+                current = parseStoredCredentials(account.encryptedCredentials);
+            } catch {
+                throw createApiError('Invalid credentials', 500, 'INVALID_CREDENTIALS');
+            }
+
+            const nextCredentials: StoredCredentials = {
+                apiKey: updatingApiKeySecret ? apiKey! : current.apiKey,
+                secret: updatingApiKeySecret ? secret! : current.secret,
+                passphrase: updatingPassphrase ? passphrase : current.passphrase,
+            };
+
+            if (requiresPassphrase(exchangeId) && !nextCredentials.passphrase) {
+                throw createApiError('Passphrase is required for this exchange', 400, 'MISSING_PASSPHRASE');
+            }
+
+            const credentialsJson = JSON.stringify(nextCredentials);
             if (isEncryptionEnabled()) {
                 encryptedCredentials = encryptCredentials(credentialsJson);
             } else {
@@ -238,7 +291,7 @@ accountsRouter.put('/:accountId', async (req: Request, res: Response, next: Next
 accountsRouter.delete('/:accountId', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = requireUserId(req);
-        const { accountId } = req.params;
+        const { accountId } = accountIdParamSchema.parse(req.params);
 
         // Validate account exists and belongs to user
         const account = await prisma.exchangeAccount.findFirst({
@@ -277,7 +330,7 @@ accountsRouter.delete('/:accountId', async (req: Request, res: Response, next: N
 accountsRouter.get('/:accountId/balance', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = requireUserId(req);
-        const { accountId } = req.params;
+        const { accountId } = accountIdParamSchema.parse(req.params);
 
         const account = await prisma.exchangeAccount.findFirst({
             where: { id: accountId, userId },
@@ -287,31 +340,46 @@ accountsRouter.get('/:accountId/balance', async (req: Request, res: Response, ne
             throw createApiError('Account not found', 404, 'EXCHANGE_ACCOUNT_NOT_FOUND');
         }
 
-        let apiKey = '';
-        let secret = '';
-
-        if (account.encryptedCredentials) {
-            try {
-                const plain = JSON.parse(account.encryptedCredentials);
-                apiKey = plain.apiKey;
-                secret = plain.secret;
-            } catch {
-                const json = decryptCredentials(account.encryptedCredentials);
-                const creds = JSON.parse(json);
-                apiKey = creds.apiKey;
-                secret = creds.secret;
-            }
+        const exchangeId = normalizeSupportedExchangeId(account.exchange);
+        if (!exchangeId) {
+            throw createApiError(`Exchange not supported: ${account.exchange}`, 400, 'EXCHANGE_NOT_SUPPORTED');
+        }
+        if (account.isTestnet && !supportsTestnet(exchangeId)) {
+            throw createApiError('Testnet is not supported for this exchange', 400, 'TESTNET_NOT_SUPPORTED');
         }
 
-        if (!apiKey || !secret) {
+        if (!account.isTestnet && process.env['ALLOW_MAINNET_TRADING'] !== 'true') {
+            throw createApiError(
+                'Mainnet access is disabled. Set ALLOW_MAINNET_TRADING=true to enable.',
+                403,
+                'MAINNET_TRADING_DISABLED'
+            );
+        }
+
+        let creds: StoredCredentials;
+        try {
+            creds = parseStoredCredentials(account.encryptedCredentials);
+        } catch {
             throw createApiError('Invalid credentials', 500, 'INVALID_CREDENTIALS');
         }
 
-        const executor = createBinanceExecutor({
-            apiKey,
-            secret,
+        if (!creds.apiKey || !creds.secret) {
+            throw createApiError('Invalid credentials', 500, 'INVALID_CREDENTIALS');
+        }
+
+        if (requiresPassphrase(exchangeId) && !creds.passphrase) {
+            throw createApiError('Passphrase is required for this exchange', 400, 'MISSING_PASSPHRASE');
+        }
+
+        const allowMainnet = process.env['ALLOW_MAINNET_TRADING'] === 'true';
+
+        const executor = createCcxtExecutor({
+            exchangeId,
+            apiKey: creds.apiKey,
+            secret: creds.secret,
+            passphrase: creds.passphrase,
             isTestnet: account.isTestnet,
-            allowMainnet: !account.isTestnet
+            allowMainnet,
         });
 
         const balance = await executor.fetchBalance();

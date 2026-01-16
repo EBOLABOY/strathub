@@ -8,14 +8,24 @@
  */
 
 import { prisma, Prisma } from '@crypto-strategy-hub/database';
-import { checkAutoClose, parseAutoCloseConfig } from '@crypto-strategy-hub/shared';
+import { checkAutoClose } from '@crypto-strategy-hub/shared';
 import { getProviderFactory as getMarketDataProviderFactory } from '@crypto-strategy-hub/market-data';
 import type { WorkerDeps, MarketDataProvider, AutoCloseResult } from './worker.js';
 import { alertWarning, recordRiskTriggered } from './metrics.js';
+import { Decimal } from 'decimal.js';
 
 // ============================================================================
 // checkAndTrigger 实现（复用 shared 的纯函数 + prisma 写入）
 // ============================================================================
+
+function parseDecimalSafe(value: unknown): Decimal | null {
+    if (typeof value !== 'string') return null;
+    try {
+        return new Decimal(value);
+    } catch {
+        return null;
+    }
+}
 
 async function checkAndTriggerAutoCloseImpl(
     botId: string,
@@ -42,12 +52,24 @@ async function checkAndTriggerAutoCloseImpl(
         return { triggered: false, previouslyTriggered: true };
     }
 
-    if (!bot.autoCloseReferencePrice) {
-        return { triggered: false, previouslyTriggered: false };
+    let parsedConfig: any | null = null;
+    try {
+        parsedConfig = JSON.parse(bot.configJson) as any;
+    } catch {
+        parsedConfig = null;
     }
 
-    const config = parseAutoCloseConfig(bot.configJson);
-    if (!config.enableAutoClose) {
+    const floorEnabled =
+        !!parsedConfig?.risk?.enableFloorPrice && typeof parsedConfig?.risk?.floorPrice === 'string';
+    const maxEnabled =
+        typeof parsedConfig?.trigger?.priceMax === 'string' && parsedConfig.trigger.priceMax.length > 0;
+    const autoCloseConfig = {
+        enableAutoClose: parsedConfig?.risk?.enableAutoClose ?? false,
+        autoCloseDrawdownPercent: parsedConfig?.risk?.autoCloseDrawdownPercent,
+    };
+    const needsAutoClose = !!bot.autoCloseReferencePrice && !!autoCloseConfig.enableAutoClose;
+
+    if (!floorEnabled && !maxEnabled && !needsAutoClose) {
         return { triggered: false, previouslyTriggered: false };
     }
 
@@ -58,6 +80,87 @@ async function checkAndTriggerAutoCloseImpl(
     } catch (error) {
         console.error(`[AutoClose] Failed to get ticker for ${bot.symbol}:`, error);
         throw new Error('503 EXCHANGE_UNAVAILABLE');
+    }
+
+    // Stop-loss / Take-profit (absolute price thresholds)
+    // - floorPrice: price < floorPrice -> STOPPING + force close (handled by STOPPING executor)
+    // - priceMax:   price > priceMax   -> STOPPING + force close (handled by STOPPING executor)
+    if (parsedConfig) {
+        const lastDec = new Decimal(tickerLast);
+        const floorDec = floorEnabled ? parseDecimalSafe(parsedConfig.risk.floorPrice) : null;
+        const maxDec = maxEnabled ? parseDecimalSafe(parsedConfig.trigger.priceMax) : null;
+
+        if (floorDec && lastDec.lt(floorDec)) {
+            try {
+                await prisma.bot.update({
+                    where: {
+                        id: botId,
+                        statusVersion: bot.statusVersion,
+                        status: { in: ['RUNNING', 'WAITING_TRIGGER'] },
+                    },
+                    data: {
+                        status: 'STOPPING',
+                        statusVersion: bot.statusVersion + 1,
+                        lastError: `STOP_LOSS: last=${tickerLast} < floorPrice=${parsedConfig.risk.floorPrice}`,
+                    },
+                });
+            } catch (error) {
+                if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                    return { triggered: true, previouslyTriggered: false, newStatus: 'STOPPING' };
+                }
+                throw error;
+            }
+
+            recordRiskTriggered('stop_loss');
+            void alertWarning(
+                '止损触发',
+                `Bot 触发止损：last=${tickerLast} < floorPrice=${parsedConfig.risk.floorPrice}，进入 STOPPING 并强制平仓`,
+                { botId }
+            );
+
+            return { triggered: true, previouslyTriggered: false, newStatus: 'STOPPING' };
+        }
+
+        if (maxDec && lastDec.gt(maxDec)) {
+            try {
+                await prisma.bot.update({
+                    where: {
+                        id: botId,
+                        statusVersion: bot.statusVersion,
+                        status: { in: ['RUNNING', 'WAITING_TRIGGER'] },
+                    },
+                    data: {
+                        status: 'STOPPING',
+                        statusVersion: bot.statusVersion + 1,
+                        lastError: `TAKE_PROFIT: last=${tickerLast} > priceMax=${parsedConfig.trigger.priceMax}`,
+                    },
+                });
+            } catch (error) {
+                if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                    return { triggered: true, previouslyTriggered: false, newStatus: 'STOPPING' };
+                }
+                throw error;
+            }
+
+            recordRiskTriggered('take_profit');
+            void alertWarning(
+                '止盈触发',
+                `Bot 触发止盈：last=${tickerLast} > priceMax=${parsedConfig.trigger.priceMax}，进入 STOPPING 并强制平仓`,
+                { botId }
+            );
+
+            return { triggered: true, previouslyTriggered: false, newStatus: 'STOPPING' };
+        }
+    }
+
+    // AutoClose (drawdown-based)
+    if (!bot.autoCloseReferencePrice) {
+        return { triggered: false, previouslyTriggered: false };
+    }
+
+    const config = autoCloseConfig;
+    if (!config.enableAutoClose) {
+        return { triggered: false, previouslyTriggered: false };
     }
 
     let decision;
@@ -142,7 +245,7 @@ function createProcessTriggerOrderAdapter(): ProcessTriggerOrderFn {
         // 获取 bot 的 symbol
         const bot = await prisma.bot.findUnique({
             where: { id: botId },
-            select: { symbol: true },
+            select: { symbol: true, configJson: true },
         });
 
         if (!bot) {
@@ -153,10 +256,22 @@ function createProcessTriggerOrderAdapter(): ProcessTriggerOrderFn {
         const ticker = await provider.getTicker(bot.symbol);
         const marketInfo = await provider.getMarketInfo(bot.symbol);
 
+        let orderBook: import('@crypto-strategy-hub/shared').PreviewOrderBookInfo | undefined;
+        try {
+            const parsed = JSON.parse(bot.configJson) as any;
+            const entryPriceSource = parsed?.order?.entryPriceSource;
+            if (entryPriceSource === 'orderbook') {
+                orderBook = await provider.getOrderBook(bot.symbol, 5);
+            }
+        } catch {
+            orderBook = undefined;
+        }
+
         await processTriggerOrder(botId, {
             executor,
             tickerPrice: ticker.last,
             marketInfo,
+            orderBook,
         });
     };
 }
@@ -225,4 +340,3 @@ export async function createWorkerDeps(): Promise<WorkerDeps> {
         processStoppingBot: enableStopping ? createProcessStoppingBotAdapter(executorFactory) : undefined,
     };
 }
-

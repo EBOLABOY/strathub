@@ -12,6 +12,8 @@ import { prisma, Prisma } from '@crypto-strategy-hub/database';
 import {
     BotStatus,
     type GridConfig,
+    getReferencePrice,
+    normalizeSupportedExchangeId,
 } from '@crypto-strategy-hub/shared';
 import { createApiError } from '../middleware/error-handler.js';
 import { authGuard, requireUserId } from '../middleware/auth-guard.js';
@@ -34,7 +36,6 @@ import {
     checkAndTriggerAutoClose,
     getReferencePriceForFreeze,
 } from '../services/auto-close.js';
-import { getReferencePrice } from '@crypto-strategy-hub/shared';
 import {
     type MarketDataProviderFactory,
     getProviderFactory,
@@ -70,6 +71,17 @@ const updateConfigSchema = z.object({
 
 const previewSchema = z.object({
     configOverride: z.record(z.unknown()).optional(),
+});
+
+const botIdParamSchema = z.object({
+    botId: z.string().uuid(),
+});
+
+const tradesQuerySchema = z.object({
+    limit: z.preprocess(
+        (value) => (Array.isArray(value) ? value[0] : value),
+        z.coerce.number().int().min(1).max(100).optional().default(50)
+    ),
 });
 
 // ============================================================================
@@ -124,6 +136,14 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
                 );
             }
 
+            if (!normalizeSupportedExchangeId(exchangeAccount.exchange)) {
+                throw createApiError(
+                    `Exchange not supported: ${exchangeAccount.exchange}`,
+                    400,
+                    'EXCHANGE_NOT_SUPPORTED'
+                );
+            }
+
             const bot = await prisma.bot.create({
                 data: {
                     userId,
@@ -170,7 +190,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.get('/:botId', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const { botId } = req.params;
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const bot = await prisma.bot.findFirst({
                 where: { id: botId, userId },
@@ -190,7 +210,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.delete('/:botId', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const { botId } = req.params;
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const bot = await prisma.bot.findFirst({
                 where: { id: botId, userId },
@@ -226,7 +246,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.put('/:botId/config', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const { botId } = req.params;
+            const { botId } = botIdParamSchema.parse(req.params);
             const { configJson } = updateConfigSchema.parse(req.body);
 
             const bot = await prisma.bot.findFirst({
@@ -263,7 +283,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.post('/:botId/preview', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const { botId } = req.params;
+            const { botId } = botIdParamSchema.parse(req.params);
             const { configOverride } = previewSchema.parse(req.body);
 
             const bot = await prisma.bot.findFirst({
@@ -275,7 +295,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
             }
 
             // 使用注入的 provider（按 bot 的 exchangeAccountId 创建）
-            const provider = await getProviderForBot(botId!, userId);
+            const provider = await getProviderForBot(botId, userId);
             const result = await validateBotConfig({
                 symbol: bot.symbol,
                 configJson: bot.configJson,
@@ -293,8 +313,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.post('/:botId/start', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const botId = req.params['botId'];
-            if (!botId) throw createApiError('Bot ID required', 400, 'BAD_REQUEST');
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const provider = await getProviderForBot(botId, userId);
             const result = await transitionBotState(botId, userId, 'START', provider);
@@ -308,8 +327,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.post('/:botId/pause', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const botId = req.params['botId'];
-            if (!botId) throw createApiError('Bot ID required', 400, 'BAD_REQUEST');
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const provider = await getProviderForBot(botId, userId);
             const result = await transitionBotState(botId, userId, 'PAUSE', provider);
@@ -323,8 +341,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.post('/:botId/resume', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const botId = req.params['botId'];
-            if (!botId) throw createApiError('Bot ID required', 400, 'BAD_REQUEST');
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const provider = await getProviderForBot(botId, userId);
             const result = await transitionBotState(botId, userId, 'RESUME', provider);
@@ -338,8 +355,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.post('/:botId/stop', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const botId = req.params['botId'];
-            if (!botId) throw createApiError('Bot ID required', 400, 'BAD_REQUEST');
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const provider = await getProviderForBot(botId, userId);
             const result = await transitionBotState(botId, userId, 'STOP', provider);
@@ -353,7 +369,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.get('/:botId/runtime', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const { botId } = req.params;
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const bot = await prisma.bot.findFirst({
                 where: { id: botId, userId },
@@ -384,8 +400,8 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.get('/:botId/trades', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const { botId } = req.params;
-            const limit = Math.min(parseInt(req.query['limit'] as string) || 50, 100);
+            const { botId } = botIdParamSchema.parse(req.params);
+            const { limit } = tradesQuerySchema.parse(req.query);
 
             const bot = await prisma.bot.findFirst({
                 where: { id: botId, userId },
@@ -411,8 +427,7 @@ export function createBotsRouter(deps: BotsRouterDeps = {}): Router {
     router.post('/:botId/risk-check', async (req, res, next) => {
         try {
             const userId = requireUserId(req);
-            const botId = req.params['botId'];
-            if (!botId) throw createApiError('Bot ID required', 400, 'BAD_REQUEST');
+            const { botId } = botIdParamSchema.parse(req.params);
 
             const provider = await getProviderForBot(botId, userId);
             const result = await checkAndTriggerAutoClose(botId, userId, provider);
@@ -540,6 +555,7 @@ async function transitionBotState(
             status: string;
             statusVersion: number;
             runId: string | null;
+            startedAt?: Date | null;
             autoCloseReferencePrice?: string | null;
             autoCloseTriggeredAt?: null;
             autoCloseReason?: null;
@@ -550,6 +566,11 @@ async function transitionBotState(
             statusVersion: bot.statusVersion + 1,
             runId: event === 'STOP' ? null : runId,
         };
+
+        // START/RESUME: set startedAt baseline for expiryDays
+        if (event === 'START' || event === 'RESUME') {
+            updateData.startedAt = new Date();
+        }
 
         // START/RESUME: 冻结 referencePrice + 清空触发状态（新 run）
         if ((event === 'START' || event === 'RESUME') && referencePrice) {

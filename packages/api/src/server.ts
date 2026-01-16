@@ -12,6 +12,7 @@ import { sseRouter } from './routes/sse.js';
 import { configRouter } from './routes/config.js';
 import { templatesRouter } from './routes/templates.js';
 import { marketRouter } from './routes/market.js';
+import { dashboardRouter } from './routes/dashboard.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { requestLogger } from './middleware/request-logger.js';
 import { initAlertService } from '@crypto-strategy-hub/observability';
@@ -42,6 +43,7 @@ app.use('/api/sse', sseRouter);
 app.use('/api/config', configRouter);
 app.use('/api/templates', templatesRouter);
 app.use('/api/market', marketRouter);
+app.use('/api/dashboard', dashboardRouter);
 app.use('/metrics', metricsRouter);
 
 // Health check

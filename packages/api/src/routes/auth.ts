@@ -8,10 +8,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@crypto-strategy-hub/database';
 import { createApiError } from '../middleware/error-handler.js';
+import { authGuard, requireUserId } from '../middleware/auth-guard.js';
+import { getJwtSecret } from '../env.js';
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env['JWT_SECRET'] ?? 'dev-secret-change-in-production';
+const JWT_SECRET = getJwtSecret();
 
 // Schemas
 const registerSchema = z.object({
@@ -79,18 +81,12 @@ authRouter.post('/login', async (req, res, next) => {
 });
 
 // GET /api/auth/me
-authRouter.get('/me', async (req, res, next) => {
+authRouter.get('/me', authGuard, async (req, res, next) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-            throw createApiError('Unauthorized', 401, 'UNAUTHORIZED');
-        }
-
-        const token = authHeader.slice(7);
-        const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
+        const userId = requireUserId(req);
 
         const user = await prisma.user.findUnique({
-            where: { id: payload.userId },
+            where: { id: userId },
             select: { id: true, email: true, role: true, createdAt: true },
         });
 
@@ -100,10 +96,6 @@ authRouter.get('/me', async (req, res, next) => {
 
         res.json(user);
     } catch (error) {
-        if (error instanceof jwt.JsonWebTokenError) {
-            next(createApiError('Invalid token', 401, 'INVALID_TOKEN'));
-        } else {
-            next(error);
-        }
+        next(error);
     }
 });

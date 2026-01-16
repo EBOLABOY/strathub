@@ -6,7 +6,14 @@
 
 import type { MarketDataProvider, MarketDataProviderFactory, ExchangeAccountInfo } from './types.js';
 import { createBinanceProvider } from './binance-provider.js';
-import type { PreviewMarketInfo, PreviewTickerInfo, PreviewBalanceInfo } from '@crypto-strategy-hub/shared';
+import { createCcxtPublicProvider } from './ccxt-public-provider.js';
+import {
+  normalizeSupportedExchangeId,
+  type PreviewMarketInfo,
+  type PreviewTickerInfo,
+  type PreviewBalanceInfo,
+  type PreviewOrderBookInfo,
+} from '@crypto-strategy-hub/shared';
 
 // ============================================================================
 // Mock Provider Factory（测试用）
@@ -27,6 +34,20 @@ export const mockMarketDataProvider: MarketDataProvider = {
     return {
       last: '580.00',
     };
+  },
+
+  async getOrderBook(_symbol: string, depth: number = 5): Promise<PreviewOrderBookInfo> {
+    const levels = Math.max(1, Math.min(50, Math.trunc(depth)));
+    const last = 580.0;
+    const bids = Array.from({ length: levels }, (_, i) => ({
+      price: (last - (i + 1) * 0.01).toFixed(2),
+      amount: '1',
+    }));
+    const asks = Array.from({ length: levels }, (_, i) => ({
+      price: (last + (i + 1) * 0.01).toFixed(2),
+      amount: '1',
+    }));
+    return { bids, asks };
   },
 
   async getBalance(_symbol: string): Promise<PreviewBalanceInfo | undefined> {
@@ -101,6 +122,21 @@ export const simulatedMarketDataProvider: MarketDataProvider = {
     };
   },
 
+  async getOrderBook(symbol: string, depth: number = 5): Promise<PreviewOrderBookInfo> {
+    const levels = Math.max(1, Math.min(50, Math.trunc(depth)));
+    const last = Number(computeSimulatedLast(symbol));
+    const base = Number.isFinite(last) ? last : 580.0;
+    const bids = Array.from({ length: levels }, (_, i) => ({
+      price: Math.max(0.0001, base - (i + 1) * 0.01).toFixed(2),
+      amount: '1',
+    }));
+    const asks = Array.from({ length: levels }, (_, i) => ({
+      price: Math.max(0.0001, base + (i + 1) * 0.01).toFixed(2),
+      amount: '1',
+    }));
+    return { bids, asks };
+  },
+
   async getBalance(_symbol: string): Promise<PreviewBalanceInfo | undefined> {
     return undefined;
   },
@@ -118,13 +154,17 @@ export const simulatedProviderFactory: MarketDataProviderFactory = {
 
 export const realProviderFactory: MarketDataProviderFactory = {
   async createProvider(account: ExchangeAccountInfo): Promise<MarketDataProvider> {
-    switch (account.exchange.toLowerCase()) {
-      case 'binance':
-        return createBinanceProvider(account);
-      default:
-        console.warn(`[ProviderFactory] Unknown exchange: ${account.exchange}, using mock`);
-        return mockMarketDataProvider;
+    const exchangeId = normalizeSupportedExchangeId(account.exchange);
+    if (!exchangeId) {
+      throw new Error(`Unsupported exchange: ${account.exchange}`);
     }
+
+    // Keep Binance special-cased: it has resilient fallback spot API bases.
+    if (exchangeId === 'binance') {
+      return createBinanceProvider(account);
+    }
+
+    return createCcxtPublicProvider(exchangeId, account);
   },
 };
 

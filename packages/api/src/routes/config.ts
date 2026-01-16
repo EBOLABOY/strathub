@@ -5,17 +5,48 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { prisma } from '@crypto-strategy-hub/database';
-import { authGuard } from '../middleware/auth-guard.js';
+import { authGuard, requireUserId } from '../middleware/auth-guard.js';
+import { createApiError } from '../middleware/error-handler.js';
 
 export const configRouter = Router();
 
 // 所有配置路由需要认证
 configRouter.use(authGuard);
 
+const importSchema = z.object({
+    configs: z.array(
+        z.object({
+            key: z.string().min(1),
+            value: z.string(),
+            description: z.string().optional(),
+        })
+    ),
+});
+
+const batchUpdateSchema = z.object({
+    items: z.array(
+        z.object({
+            key: z.string().min(1),
+            value: z.string(),
+        })
+    ),
+});
+
+const updateSchema = z.object({
+    value: z.string(),
+    description: z.string().optional(),
+});
+
+const rollbackSchema = z.object({
+    historyId: z.string().uuid(),
+});
+
 // GET /api/config - 获取所有配置项
 configRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
+        requireUserId(req);
         const configs = await prisma.configItem.findMany({
             orderBy: [{ category: 'asc' }, { key: 'asc' }],
         });
@@ -28,6 +59,7 @@ configRouter.get('/', async (req: Request, res: Response, next: NextFunction) =>
 // GET /api/config/export - 导出所有配置
 configRouter.get('/export', async (req: Request, res: Response, next: NextFunction) => {
     try {
+        requireUserId(req);
         const configs = await prisma.configItem.findMany({
             select: {
                 key: true,
@@ -46,12 +78,8 @@ configRouter.get('/export', async (req: Request, res: Response, next: NextFuncti
 // POST /api/config/import - 批量导入配置
 configRouter.post('/import', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { configs } = req.body as { configs: { key: string; value: string; description?: string }[] };
-
-        if (!Array.isArray(configs)) {
-            res.status(400).json({ error: 'Invalid configs format', code: 'INVALID_FORMAT' });
-            return;
-        }
+        requireUserId(req);
+        const { configs } = importSchema.parse(req.body);
 
         let imported = 0;
         for (const config of configs) {
@@ -80,12 +108,8 @@ configRouter.post('/import', async (req: Request, res: Response, next: NextFunct
 // PUT /api/config/batch - 批量更新配置
 configRouter.put('/batch', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { items } = req.body as { items: { key: string; value: string }[] };
-
-        if (!Array.isArray(items)) {
-            res.status(400).json({ error: 'Invalid items format', code: 'INVALID_FORMAT' });
-            return;
-        }
+        requireUserId(req);
+        const { items } = batchUpdateSchema.parse(req.body);
 
         let updated = 0;
         for (const item of items) {
@@ -105,15 +129,15 @@ configRouter.put('/batch', async (req: Request, res: Response, next: NextFunctio
 // GET /api/config/:key - 获取单个配置项
 configRouter.get('/:key', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { key } = req.params;
+        requireUserId(req);
+        const { key } = z.object({ key: z.string().min(1) }).parse(req.params);
 
         const config = await prisma.configItem.findUnique({
             where: { key },
         });
 
         if (!config) {
-            res.status(404).json({ error: 'Config not found', code: 'CONFIG_NOT_FOUND' });
-            return;
+            throw createApiError('Config not found', 404, 'CONFIG_NOT_FOUND');
         }
 
         res.json(config);
@@ -125,16 +149,16 @@ configRouter.get('/:key', async (req: Request, res: Response, next: NextFunction
 // PUT /api/config/:key - 更新配置项
 configRouter.put('/:key', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { key } = req.params;
-        const { value, description } = req.body;
+        requireUserId(req);
+        const { key } = z.object({ key: z.string().min(1) }).parse(req.params);
+        const { value, description } = updateSchema.parse(req.body);
 
         const existing = await prisma.configItem.findUnique({
             where: { key },
         });
 
         if (!existing) {
-            res.status(404).json({ error: 'Config not found', code: 'CONFIG_NOT_FOUND' });
-            return;
+            throw createApiError('Config not found', 404, 'CONFIG_NOT_FOUND');
         }
 
         // 记录历史
@@ -163,15 +187,15 @@ configRouter.put('/:key', async (req: Request, res: Response, next: NextFunction
 // GET /api/config/:key/history - 获取配置历史
 configRouter.get('/:key/history', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { key } = req.params;
+        requireUserId(req);
+        const { key } = z.object({ key: z.string().min(1) }).parse(req.params);
 
         const configItem = await prisma.configItem.findUnique({
             where: { key },
         });
 
         if (!configItem) {
-            res.status(404).json({ error: 'Config not found', code: 'CONFIG_NOT_FOUND' });
-            return;
+            throw createApiError('Config not found', 404, 'CONFIG_NOT_FOUND');
         }
 
         const history = await prisma.configHistory.findMany({
@@ -188,16 +212,16 @@ configRouter.get('/:key/history', async (req: Request, res: Response, next: Next
 // POST /api/config/:key/rollback - 回滚配置
 configRouter.post('/:key/rollback', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { key } = req.params;
-        const { historyId } = req.body;
+        requireUserId(req);
+        const { key } = z.object({ key: z.string().min(1) }).parse(req.params);
+        const { historyId } = rollbackSchema.parse(req.body);
 
         const historyRecord = await prisma.configHistory.findUnique({
             where: { id: historyId },
         });
 
         if (!historyRecord) {
-            res.status(404).json({ error: 'History record not found', code: 'HISTORY_NOT_FOUND' });
-            return;
+            throw createApiError('History record not found', 404, 'HISTORY_NOT_FOUND');
         }
 
         const updated = await prisma.configItem.update({

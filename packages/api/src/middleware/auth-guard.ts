@@ -7,13 +7,25 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { createApiError } from './error-handler.js';
+import { getJwtSecret } from '../env.js';
 
-const JWT_SECRET = process.env['JWT_SECRET'] ?? 'dev-secret-change-in-production';
+const JWT_SECRET = getJwtSecret();
 
 export interface JwtPayload {
     userId: string;
     email: string;
     role: 'admin' | 'user';
+}
+
+export function verifyJwtToken(token: string): JwtPayload {
+    try {
+        return jwt.verify(token, JWT_SECRET) as JwtPayload;
+    } catch (error) {
+        if (error instanceof jwt.JsonWebTokenError) {
+            throw createApiError('Invalid token', 401, 'INVALID_TOKEN');
+        }
+        throw error;
+    }
 }
 
 // 扩展 Express Request 类型
@@ -40,16 +52,10 @@ export function authGuard(req: Request, _res: Response, next: NextFunction): voi
         }
 
         const token = authHeader.slice(7);
-        const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
-
-        req.user = payload;
+        req.user = verifyJwtToken(token);
         next();
     } catch (error) {
-        if (error instanceof jwt.JsonWebTokenError) {
-            next(createApiError('Invalid token', 401, 'INVALID_TOKEN'));
-        } else {
-            next(error);
-        }
+        next(error);
     }
 }
 
@@ -64,8 +70,7 @@ export function optionalAuthGuard(req: Request, _res: Response, next: NextFuncti
 
         if (authHeader?.startsWith('Bearer ')) {
             const token = authHeader.slice(7);
-            const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
-            req.user = payload;
+            req.user = verifyJwtToken(token);
         }
 
         next();

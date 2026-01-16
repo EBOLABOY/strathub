@@ -50,12 +50,15 @@ export async function reconcileBot(
             status: true,
             runId: true,
             exchangeAccountId: true,
+            exchangeAccount: { select: { exchange: true } },
         },
     });
 
     if (!bot) {
         return { success: false, ordersUpserted: 0, tradesInserted: 0, snapshotCreated: false, error: 'Bot not found' };
     }
+
+    const exchange = bot.exchangeAccount.exchange.toLowerCase();
 
     // 只 reconcile RUNNING/WAITING_TRIGGER/STOPPING
     if (!['RUNNING', 'WAITING_TRIGGER', 'STOPPING'].includes(bot.status)) {
@@ -91,13 +94,13 @@ export async function reconcileBot(
             await prisma.order.upsert({
                 where: {
                     exchange_clientOrderId: {
-                        exchange: 'binance',
+                        exchange,
                         clientOrderId: order.clientOrderId,
                     },
                 },
                 create: {
                     botId,
-                    exchange: 'binance',
+                    exchange,
                     symbol: order.symbol,
                     clientOrderId: order.clientOrderId,
                     exchangeOrderId: order.id,
@@ -125,6 +128,7 @@ export async function reconcileBot(
     const activeDbOrders = await prisma.order.findMany({
         where: {
             botId,
+            exchange,
             exchangeOrderId: { not: null }
         },
         select: { clientOrderId: true, exchangeOrderId: true }
@@ -162,7 +166,7 @@ export async function reconcileBot(
             await prisma.trade.upsert({
                 where: {
                     exchange_tradeId: {
-                        exchange: 'binance',
+                        exchange,
                         tradeId: trade.id,
                     },
                 },
@@ -170,7 +174,7 @@ export async function reconcileBot(
                     botId,
                     tradeId: trade.id,
                     clientOrderId: trade.clientOrderId,
-                    exchange: 'binance',
+                    exchange,
                     symbol: trade.symbol,
                     side: trade.side,
                     price: trade.price,
@@ -216,7 +220,7 @@ export async function reconcileBot(
 
         // 查询订单
         const order = await prisma.order.findFirst({
-            where: { botId, clientOrderId },
+            where: { botId, exchange, clientOrderId },
         });
         if (!order) continue;
 
@@ -240,6 +244,56 @@ export async function reconcileBot(
                 avgFillPrice,
                 status: newStatus,
             },
+        });
+    }
+
+    // 6.5 标记已关闭但本地仍是 open 状态的订单（关键：撤单/过期/被手动取消）
+    //
+    // openOrders 是事实来源：如果某个订单不再出现在 openOrders 里，并且没有完全成交，
+    // 那它就不应该继续保持 NEW/PARTIALLY_FILLED，否则会把 trigger loop 卡死。
+    const maybeClosedOrders = await prisma.order.findMany({
+        where: {
+            botId,
+            exchange,
+            exchangeOrderId: { not: null },
+            status: { in: ['NEW', 'PARTIALLY_FILLED'] },
+        },
+        select: {
+            id: true,
+            exchangeOrderId: true,
+            amount: true,
+            filledAmount: true,
+            status: true,
+        },
+    });
+
+    for (const order of maybeClosedOrders) {
+        if (!order.exchangeOrderId) continue;
+        if (openOrderIds.has(order.exchangeOrderId)) continue;
+
+        let amount: Decimal;
+        let filled: Decimal;
+        try {
+            amount = new Decimal(order.amount);
+            filled = new Decimal(order.filledAmount || '0');
+        } catch {
+            // 数据坏了就别乱写，留给上层处理
+            continue;
+        }
+
+        if (filled.gte(amount)) {
+            if (order.status !== 'FILLED') {
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: { status: 'FILLED' },
+                });
+            }
+            continue;
+        }
+
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: 'CANCELED' },
         });
     }
 

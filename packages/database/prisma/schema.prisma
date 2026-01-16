@@ -34,7 +34,7 @@ model User {
 model ExchangeAccount {
   id                   String   @id @default(uuid())
   userId               String
-  exchange             String   // "binance" | "okx"
+  exchange             String   // "binance" | "okx" | "bybit" | "coinbase" | "kraken" (okx requires passphrase)
   name                 String   // 用户自定义名称
   isTestnet            Boolean  @default(false)
   encryptedCredentials String   // AES-256 加密的 JSON { apiKey, secret, passphrase? }
@@ -72,6 +72,9 @@ model Bot {
   autoCloseReferencePrice String?   // start/resume 时冻结的参考价
   autoCloseTriggeredAt    DateTime? // 触发时间（只触发一次）
   autoCloseReason         String?   // 触发原因
+
+  // Lifecycle（expiryDays）计时基准：start/resume 时间
+  startedAt               DateTime?
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

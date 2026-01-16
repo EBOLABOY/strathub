@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from "next-intl";
-import { api } from '@/lib/api';
+import { api, DashboardStats } from '@/lib/api';
 import { Bot, BotStatus } from '@crypto-strategy-hub/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
@@ -27,6 +27,7 @@ export function ActiveBotsList() {
     const tStatus = useTranslations("botStatus");
 
     const [bots, setBots] = useState<Bot[]>([]);
+    const [pnl24h, setPnl24h] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +35,13 @@ export function ActiveBotsList() {
         const loadBots = async () => {
             try {
                 setLoading(true);
-                const allBots = await api.bots.list();
+
+                // Fetch bots and dashboard stats in parallel
+                const [allBots, dashboardStats] = await Promise.all([
+                    api.bots.list(),
+                    api.dashboard.getStats()
+                ]);
+
                 // Sort by status priority: RUNNING > WAITING_TRIGGER > PAUSED > others
                 const statusPriority: Record<string, number> = {
                     [BotStatus.RUNNING]: 0,
@@ -50,8 +57,10 @@ export function ActiveBotsList() {
                     const pb = statusPriority[b.status] ?? 99;
                     return pa - pb;
                 });
+
                 // Show top 5 bots on dashboard
                 setBots(allBots.slice(0, 5));
+                setPnl24h(dashboardStats.pnl24h || {});
                 setError(null);
             } catch (err) {
                 console.error("Failed to load bots:", err);
@@ -123,6 +132,10 @@ export function ActiveBotsList() {
         <div className="space-y-1">
             {bots.map((bot, index) => {
                 const style = getStatusStyle(bot.status);
+                const botPnl = pnl24h[bot.id];
+                const hasPnl = botPnl !== undefined;
+                const isPnlPositive = hasPnl && botPnl >= 0;
+
                 return (
                     <div
                         key={bot.id}
@@ -152,9 +165,19 @@ export function ActiveBotsList() {
                                 {tStatus(bot.status)}
                             </span>
                         </div>
-                        <div className="text-sm font-semibold text-slate-400">
-                            {/* PnL placeholder - Phase 2 will add real data */}
-                            --
+                        <div className={clsx(
+                            "text-sm font-semibold",
+                            !hasPnl ? "text-slate-400" :
+                                isPnlPositive ? "text-emerald-600" : "text-rose-600"
+                        )}>
+                            {hasPnl ? (
+                                <>
+                                    {isPnlPositive ? '+' : ''}
+                                    ${botPnl.toFixed(2)}
+                                </>
+                            ) : (
+                                '--'
+                            )}
                         </div>
                         <div className="text-right">
                             <Link
